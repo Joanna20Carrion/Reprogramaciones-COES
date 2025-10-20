@@ -116,17 +116,17 @@ __pycache__/
 
 ---
 
-## 📄 Licencia
+## 👤 Autor **Joanna Alexandra Carrión Pérez** 
+🎓 Bachiller en Ingeniería Electrónica 
+💡 Apasionada por Ciencia de Datos e Inteligencia Artificial 
+🔗 ![LinkedIn](https://img.shields.io/badge/LinkedIn-Joanna%20Carrión%20Pérez-blue?style=flat&logo=linkedin) [LinkedIn](https://www.linkedin.com/in/joanna-carrion-perez/) 
 
-Este proyecto es de uso personal/educativo. Ajusta o agrega una licencia según tu necesidad (por ejemplo, MIT).
-
----
+--- 
 
 ## 📬 Contacto
+📧 **joannacarrion14@gmail.com** 
 
-**Joanna Alexandra Carrión Pérez**
-📧 [joannacarrion14@gmail.com](mailto:joannacarrion14@gmail.com)
-LinkedIn: [https://www.linkedin.com/in/joanna-carrion-perez/](https://www.linkedin.com/in/joanna-carrion-perez/)
+--- 
 
-```
-```
+## 💡 Contribuciones 
+¡Contribuciones son bienvenidas! Si tienes ideas o mejoras, haz un fork del repo y envía un **pull request**. 🚀
