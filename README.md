@@ -116,9 +116,11 @@ __pycache__/
 
 ---
 
-## 👤 Autor **Joanna Alexandra Carrión Pérez** 
-🎓 Bachiller en Ingeniería Electrónica
-💡 Apasionada con la ciencia de datos y la inteligencia artificial  
+## 👤 Autora
+
+**Joanna Alexandra Carrión Pérez**  
+🎓 Bachiller en Ingeniería Electrónica  
+🚀 Apasionada por la ciencia de datos y sistemas inteligentes  
 🔗 ![LinkedIn](https://img.shields.io/badge/LinkedIn-Joanna%20Carrión%20Pérez-blue?style=flat&logo=linkedin) [LinkedIn](https://www.linkedin.com/in/joanna-carrion-perez/)
 
 --- 
