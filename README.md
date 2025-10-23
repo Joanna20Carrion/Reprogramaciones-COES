@@ -19,12 +19,12 @@ Aplicación **Streamlit** para visualizar y analizar reprogramaciones (PDO/RDO) 
 
 ---
 
-## 🧱 Estructura del repo (sugerida)
+## 🧱 Estructura
 ```
 
 Reprogramaciones_USGE/
 ├─ app.py
-├─ Reporte.pdf            # Ejemplo de salida
+├─ Reporte.pdf           
 ├─ requirements.txt
 └─ README.md
 
