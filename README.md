@@ -1,5 +1,5 @@
 
-# ⚡ Reprogramaciones USGE
+# ⚡ Reprogramaciones COES
 
 Aplicación **Streamlit** para visualizar y analizar reprogramaciones (PDO/RDO) del COES: **Demanda**, **Hidro/Eólico/Solar**, **CMG por barra**, **Motivos/Costos**, **Índices (Alfa/Beta/Gamma)** y **exporte a PDF**.
 
