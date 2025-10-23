@@ -101,21 +101,6 @@ streamlit run app.py
 
 ---
 
-## 🔒 .gitignore recomendado
-
-```
-__pycache__/
-*.py[cod]
-.venv/
-.env
-.streamlit/secrets.toml
-*.xlsx
-*.zip
-*.pdf
-```
-
----
-
 ## 👤 Autora
 
 **Joanna Alexandra Carrión Pérez**  
