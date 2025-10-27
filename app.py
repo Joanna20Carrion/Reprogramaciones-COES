@@ -11,6 +11,12 @@ from math import isfinite, isnan
 import numpy as np
 import re, unicodedata
 
+import warnings
+warnings.filterwarnings(
+    "ignore",
+    message="Attempting to set identical low and high ylims makes transformation singular"
+)
+
 # ------------------ Configuración ------------------
 BARRAS_DEF = ["SANTA ROSA 220 A", "MOQUEGUA 220", "ZORRITOS 220"]
 RDO_LETRAS_DEF = list("ABCDEF")
@@ -301,8 +307,7 @@ def _plot_series(xlbls, yvals, titulo):
             ax.set_ylim(ymin - pad, ymax + pad)
 
     ax.grid(axis="y", linestyle="--", alpha=0.5)
-    ax.set_title(titulo); ax.set_xlabel("Hora"); ax.set_ylabel("Índice")
-    ax.legend()
+    ax.set_title(titulo); ax.set_ylabel("Valor")
     plt.tight_layout()
     return fig
 
@@ -327,14 +332,14 @@ def _plot_cmg_barra_en_axes(ax, barra, series_barra, horas, ticks_pos, ticks_lbl
         valores_plot.extend(y)
         ax.plot(x, y, marker="o", linewidth=2, label=nombre)
     if not valores_plot: return False
-    min_y = max(0, math.floor(min(valores_plot)) - 10)
-    max_y = math.ceil(max(valores_plot)) + 10
+    min_y = max(0, math.floor(min(valores_plot)) - 2)
+    max_y = math.ceil(max(valores_plot)) + 2
     ax.set_ylim(min_y, max_y)
     ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
     ax.grid(axis="y", linestyle="--", alpha=0.5)
     ax.set_xticks(ticks_pos); ax.set_xticklabels(ticks_lbl, rotation=90, ha="center", fontsize=10)
     ax.set_title(f"CMG {barra}")
-    ax.set_xlabel("Hora"); ax.set_ylabel("USD/MWh")
+    ax.set_ylabel("USD/MWh")
     ax.legend()
     return True
 
@@ -397,6 +402,34 @@ def aplicar_formato_xy(ax, L, ticks_pos, horas, y_values=None, ypad=0.05, xpad=0
                 else:
                     pad = ypad * (ymax - ymin)
                 ax.set_ylim(ymin - pad, ymax + pad)
+
+def _nz(x):
+    try:
+        if x is None:
+            return 0.0
+        v = float(x)
+        if not isfinite(v) or isnan(v):
+            return 0.0
+        return v
+    except Exception:
+        return 0.0
+
+def _rel_err_abs_pct(den, num):
+    d_ = _nz(den); n_ = _nz(num)
+    if d_ == 0.0:
+        return 0.0
+    return abs((n_ - d_) / d_) * 100.0
+
+def _omit_0_100(v, tol=1e-9):
+    try:
+        f = float(v)
+        if not isfinite(f):
+            return np.nan
+        if abs(f - 0.0) <= tol or abs(f - 100.0) <= tol:
+            return np.nan
+        return f
+    except Exception:
+        return np.nan
 
 # -----------------------------------------------------------------------------
 # ------------------------------- PANTALLA ------------------------------------
@@ -469,68 +502,137 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         
                 ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
                 ax.grid(axis="y", linestyle="--", alpha=0.5)
-                ax.set_title("DEMANDA"); ax.set_xlabel("Hora"); ax.set_ylabel("MW"); ax.legend()
+                ax.set_title("DEMANDA"); ax.set_ylabel("MW"); ax.legend()
                 plt.tight_layout(); demanda_figs1.append(fig)
         
             # === ERRORES relativos absolutos ===
             try:
-                def _nz(x):
-                    try:
-                        if x is None: return 0.0
-                        v = float(x)
-                        if not isfinite(v) or isnan(v): return 0.0
-                        return v
-                    except Exception:
-                        return 0.0
-        
-                def _rel_err_abs_pct(den, num):
-                    d_ = _nz(den); n_ = _nz(num)
-                    if d_ == 0.0: return 0.0
-                    return abs((n_ - d_) / d_) * 100.0
-        
-                def _omit_0_100(v, tol=1e-9):
-                    try:
-                        f = float(v)
-                        if not isfinite(f): return np.nan
-                        if abs(f - 0.0) <= tol or abs(f - 100.0) <= tol: return np.nan
-                        return f
-                    except Exception:
-                        return np.nan
-        
                 if series_dem:
-                    orden_series_dem = [k for k in (["PDO"] + [f"RDO {l}" for l in rdo_letras]) if k in series_dem]
-                    pares_dem = [(orden_series_dem[i], orden_series_dem[i+1]) for i in range(len(orden_series_dem)-1)]
-                    errores_dem = {}
-                    for idx, (ante, act) in enumerate(pares_dem, start=1):
-                        va, vb = series_dem[ante], series_dem[act]
+                    orden_series_dem = [
+                        k for k in (["PDO"] + [f"RDO {l}" for l in rdo_letras])
+                        if k in series_dem
+                    ]
+            
+                    # pares consecutivos en orden temporal esperado
+                    pares_dem = [
+                        (orden_series_dem[i], orden_series_dem[i+1])
+                        for i in range(len(orden_series_dem)-1)
+                    ]
+            
+                    # 1) construimos cada curva original (sin cortar) con NaN ya aplicados a 0% y 100%
+                    curvas = []  # lista de dicts: {label, y_full (np.array float, len L)}
+                    L_global = None
+            
+                    for (ante, act) in pares_dem:
+                        va = series_dem[ante]
+                        vb = series_dem[act]
+            
                         mL = min(len(va), len(vb), 48)
-                        if mL <= 0: 
+                        if mL <= 0:
                             continue
-                        errores_dem[f"error{idx}"] = [_rel_err_abs_pct(va[i], vb[i]) for i in range(mL)]
-        
-                    if errores_dem:
-                        # Longitud efectiva
-                        L = min(len(v) for v in errores_dem.values() if v) or len(horas)
+            
+                        etiqueta = f"Error {ante} - {act}"
+            
+                        vals = [
+                            _rel_err_abs_pct(va[i], vb[i]) for i in range(mL)
+                        ]
+            
+                        # limpiamos 0 y 100 -> NaN
+                        y_clean = np.array([_omit_0_100(v) for v in vals], dtype=float)
+            
+                        # guardo longitud base L_global = número de medias horas reales
+                        if L_global is None:
+                            L_global = mL
+                        else:
+                            L_global = min(L_global, mL)
+            
+                        curvas.append({
+                            "label": etiqueta,
+                            "y_clean": y_clean  # todavía sin recorte posterior
+                        })
+            
+                    if curvas:
+                        # alineamos todas al mismo largo L = L_global
+                        L = L_global
                         x = np.arange(L)
-        
+            
+                        # 2) para cada curva, detectamos su primer índice válido (donde realmente empieza)
+                        for c in curvas:
+                            ysub = c["y_clean"][:L]
+                            not_nan = np.where(~np.isnan(ysub))[0]
+                            if len(not_nan) == 0:
+                                c["start_idx"] = None
+                                c["end_idx"] = None
+                            else:
+                                c["start_idx"] = int(not_nan[0])
+                                c["end_idx"]   = int(not_nan[-1])
+                        
+                        # 3) aplicamos la regla "cuando empieza la nueva, la anterior se apaga"        
+                        y_final_list = []
+                        for i, c in enumerate(curvas):
+                            ymask = c["y_clean"][:L].copy() 
+                            if i > 0:
+                                # inicio de la curva i actual
+                                s_new = curvas[i]["start_idx"]
+                                if s_new is not None:
+                                    for j in range(i):
+                                        prev = y_final_list[j]
+                                        prev[s_new:] = np.nan
+            
+                            y_final_list.append(ymask)
+            
+                        y_final_list = []
+                        for i, c in enumerate(curvas):
+                            ymask = c["y_clean"][:L].copy()
+                            y_final_list.append(ymask)
+            
+                        # ahora aplicamos cortes acumulativos:
+                        for i in range(1, len(curvas)):
+                            s_new = curvas[i]["start_idx"]
+                            if s_new is None:
+                                continue
+                            # cortar todas las anteriores desde s_new
+                            for j in range(i):
+                                y_final_list[j][s_new:] = np.nan
+            
+                        # 4) graficar ya con los cortes aplicados
                         fig, ax = plt.subplots(figsize=(11, 5))
-                        ydata = []
-                        for k in sorted(errores_dem.keys(), key=lambda s: int(s.replace("error", ""))):
-                            serie = np.array([_omit_0_100(v) for v in errores_dem[k][:L]], dtype=float)
-                            ydata.extend(serie[~np.isnan(serie)])
-                            ax.plot(x, serie, marker='o', linewidth=2, label=k)
-        
-                        # Aplica exactamente el mismo formato de la primera gráfica
-                        aplicar_formato_xy(ax, L=L, ticks_pos=ticks_pos, horas=horas, y_values=ydata, ypad=0.05, xpad=0.5)
-        
+                        ydata_all = []
+            
+                        for i, c in enumerate(curvas):
+                            serie_plot = y_final_list[i]
+                            # recolectar datos reales para escalar eje Y
+                            ydata_all.extend(serie_plot[~np.isnan(serie_plot)])
+            
+                            ax.plot(
+                                x,
+                                serie_plot,
+                                marker='o',
+                                linewidth=2,
+                                label=c["label"]
+                            )
+            
+                        # 5) mantener tus ejes originales
+                        aplicar_formato_xy(
+                            ax,
+                            L=L,
+                            ticks_pos=ticks_pos,   # tus posiciones reales de las horas
+                            horas=horas,           # tus etiquetas reales de las horas
+                            y_values=ydata_all,
+                            ypad=0.05,
+                            xpad=0.5
+                        )
+            
                         ax.grid(axis="y", linestyle="--", alpha=0.5)
                         ax.set_title("Error Porcentual de DEMANDA")
-                        ax.set_xlabel("Hora"); ax.set_ylabel("Error absoluto (%)")
-                        ax.legend(); plt.tight_layout()
+                        ax.set_ylabel("%")
+                        ax.legend()
+                        plt.tight_layout()
                         demanda_figs1.append(fig)
+            
             except Exception:
                 pass
-        
+            
         except Exception:
             pass
         
@@ -543,7 +645,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
     
     with tab2:
         # =========================================================
-        # ====================== MOTIVOS ==========================
+        # ================= MOTIVOS Y COSTOS ======================
         # =========================================================
         try:
             col_tabla, col_graf = st.columns([3, 2])  # ajusta proporciones 3:2 a tu gusto
@@ -552,29 +654,86 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 df_motivos_vista = st.session_state.get("df_motivos")
                 if df_motivos_vista is not None and not df_motivos_vista.empty:
                     st.markdown("### Motivo de Reprograma Diario")
-                    st.dataframe(df_motivos_vista, use_container_width=True)
-        
+                    st.dataframe(df_motivos_vista, width="stretch")
+                    
             with col_graf:
-                st.markdown("### Costo Total por Reprograma")
-                costos = recolectar_costos_totales_pairs(y=y, m=m, d=d, M=M, destino=work_dir, letras="".join(rdo_letras))
+                # ---- 1) Extraer valor del Resumen Diario ----
+                valor_resumen_diario = None
+                try:
+                    import pandas as pd
+            
+                    base_pdo_dir = work_dir / f"PDO_{y}{m}{d}"
+            
+                    carpeta_yupana = None
+                    for child in base_pdo_dir.iterdir():
+                        if child.is_dir() and child.name.upper().startswith("YUPANA_"):
+                            carpeta_yupana = child
+                            break
+            
+                    if carpeta_yupana:
+                        carpeta_resultados = carpeta_yupana / "RESULTADOS"
+                        if carpeta_resultados.exists():
+                            for f in carpeta_resultados.iterdir():
+                                if (
+                                    f.is_file()
+                                    and f.suffix.lower() == ".csv"
+                                    and "resumen" in f.name.lower()
+                                    and "diario" in f.name.lower()
+                                ):
+                                    df = pd.read_csv(f, header=None)
+                                    valor_resumen_diario = df.iat[1, 2]  # fila 2, col 3
+                                    valor_resumen_diario = int(float(valor_resumen_diario) * 1000)
+                                    break
+                except Exception:
+                    pass
+            
+                # ---- 2) Cargar y graficar costos ----
+                costos = recolectar_costos_totales_pairs(
+                    y=y, m=m, d=d, M=M, destino=work_dir, letras="".join(rdo_letras)
+                )
+            
                 if costos:
-                    etiquetas = [L for (L, _) in costos]; valores = [v for (_, v) in costos]
+                    etiquetas = []
+                    valores = []
+            
+                    # Primero agregar el Resumen Diario
+                    if valor_resumen_diario is not None:
+                        etiquetas.append("PDO")
+                        valores.append(float(valor_resumen_diario))
+            
+                    # Luego agregar las reprogramas
+                    for (L, monto) in costos:
+                        etiquetas.append(f"RDO {L}")
+                        valores.append(monto)
+            
                     fig, ax = plt.subplots(figsize=(8, 4))
                     ax.bar(etiquetas, valores)
+            
                     ymax = max(valores) if valores else 0
                     ax.set_ylim(0, ymax * 1.15 if ymax > 0 else 1)
-                    ax.set_xlabel("Reprograma"); ax.set_ylabel("Costo total (S/)")
-                    ax.set_title("Costo Total por Reprograma")
+                    ax.set_ylabel("S/.")
+                    ax.set_title("Costo Total del PDO y RDOs")
+            
                     try:
-                        ax.yaxis.set_major_formatter(mticker.StrMethodFormatter('{x:,.0f}'))
+                        ax.yaxis.set_major_formatter(mticker.StrMethodFormatter("{x:,.0f}"))
                     except Exception:
                         pass
+            
                     for x_, v in zip(etiquetas, valores):
-                        ax.annotate(f"{v:,.0f}", xy=(x_, v), xytext=(0, 3),
-                                    textcoords="offset points", ha="center", va="bottom", fontsize=8)
+                        ax.annotate(
+                            f"{v:,.0f}",
+                            xy=(x_, v),
+                            xytext=(0, 3),
+                            textcoords="offset points",
+                            ha="center",
+                            va="bottom",
+                            fontsize=8,
+                        )
+            
                     plt.tight_layout()
-                    st.pyplot(fig, use_container_width=True)
+                    st.pyplot(fig, width="stretch")
                     plt.close(fig)
+                    
         except Exception:
             pass
         
@@ -591,15 +750,15 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 gamma = _pad_or_trim_48(res_idx.get("gamma"))
                 c1, c2, c3 = st.columns(3)
                 with c1: 
-                    fig = _plot_series(xlbls, alfa, "Alfa")
+                    fig = _plot_series(xlbls, alfa, "ALFA (HIDRO)")
                     st.pyplot(fig)
                     plt.close(fig)
                 with c2: 
-                    fig = _plot_series(xlbls, beta, "Beta")
+                    fig = _plot_series(xlbls, beta, "BETA (TERMO)")
                     st.pyplot(fig)
                     plt.close(fig)
                 with c3: 
-                    fig = _plot_series(xlbls, gamma, "Gamma")
+                    fig = _plot_series(xlbls, gamma, "GAMMA (EÓLICA)")
                     st.pyplot(fig)
                     plt.close(fig)
         except Exception:
@@ -656,7 +815,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         
                 ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
                 ax.grid(axis="y", linestyle="--", alpha=0.5)
-                ax.set_title("HIDRO"); ax.set_xlabel("Hora"); ax.set_ylabel("MW"); ax.legend()
+                ax.set_title("HIDRO"); ax.set_ylabel("MW"); ax.legend()
                 plt.tight_layout(); hidro_figs1.append(fig)
         
         except Exception:
@@ -664,60 +823,114 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         
         # ==================== ERROR HIDRO ======================
         try:
-            def _nz(x):
-                try:
-                    if x is None: return 0.0
-                    v = float(x)
-                    if not isfinite(v) or isnan(v): return 0.0
-                    return v
-                except Exception:
-                    return 0.0
-        
-            def _rel_err_abs_pct(den, num):
-                d_ = _nz(den); n_ = _nz(num)
-                if d_ == 0.0: return 0.0
-                return abs((n_ - d_) / d_) * 100.0
-        
-            def _omit_0_100(v, tol=1e-9):
-                try:
-                    f = float(v)
-                    if not isfinite(f): return np.nan
-                    if abs(f - 0.0) <= tol or abs(f - 100.0) <= tol: return np.nan
-                    return f
-                except Exception:
-                    return np.nan
-        
             if series_h:
-                orden_series = [k for k in (["PDO"] + [f"RDO {l}" for l in rdo_letras]) if k in series_h]
-                pares = [(orden_series[i], orden_series[i+1]) for i in range(len(orden_series)-1)]
-                errores = {}
-                for idx, (ante, act) in enumerate(pares, start=1):
-                    va, vb = series_h[ante], series_h[act]
+                # orden esperado: ["PDO", "RDO A", "RDO B", ...] pero solo los que existen en series_h
+                orden_series = [
+                    k for k in (["PDO"] + [f"RDO {l}" for l in rdo_letras])
+                    if k in series_h
+                ]
+        
+                # pares consecutivos: ("PDO","RDO A"), ("RDO A","RDO B"), ...
+                pares = [
+                    (orden_series[i], orden_series[i+1])
+                    for i in range(len(orden_series)-1)
+                ]
+        
+                # 1) construir curvas de error individuales (sin cortar aún)
+                curvas = []  # lista de dicts {label, y_clean}
+                L_global = None
+        
+                for (ante, act) in pares:
+                    va = series_h[ante]
+                    vb = series_h[act]
+        
                     mL = min(len(va), len(vb), 48)
                     if mL <= 0:
                         continue
-                    errores[f"error{idx}"] = [_rel_err_abs_pct(va[i], vb[i]) for i in range(mL)]
         
-                if errores:
-                    L = min(len(v) for v in errores.values() if v) or len(horas)
+                    etiqueta = f"Error {ante} - {act}"
+        
+                    # error porcentual punto a punto
+                    vals = [
+                        _rel_err_abs_pct(va[i], vb[i])
+                        for i in range(mL)
+                    ]
+        
+                    # limpiamos 0% / 100% => NaN (para no contaminar visual)
+                    y_clean = np.array([_omit_0_100(v) for v in vals], dtype=float)
+        
+                    if L_global is None:
+                        L_global = mL
+                    else:
+                        L_global = min(L_global, mL)
+        
+                    curvas.append({
+                        "label": etiqueta,
+                        "y_clean": y_clean
+                    })
+        
+                if curvas:
+                    # alineamos todas al mismo largo base
+                    L = L_global
                     x = np.arange(L)
         
+                    # 2) detectar para cada curva su primer índice válido (start_idx)
+                    for c in curvas:
+                        ysub = c["y_clean"][:L]
+                        not_nan = np.where(~np.isnan(ysub))[0]
+                        if len(not_nan) == 0:
+                            c["start_idx"] = None
+                            c["end_idx"] = None
+                        else:
+                            c["start_idx"] = int(not_nan[0])
+                            c["end_idx"]   = int(not_nan[-1])
+        
+                    # 3) aplicar la lógica "apaga la anterior cuando arranca la nueva"
+                    y_final_list = []
+                    for c in curvas:
+                        y_final_list.append(c["y_clean"][:L].copy())
+        
+                    for i in range(1, len(curvas)):
+                        s_new = curvas[i]["start_idx"]
+                        if s_new is None:
+                            continue
+                        for j in range(i):
+                            y_final_list[j][s_new:] = np.nan
+        
+                    # 4) graficar resultado final
                     fig, ax = plt.subplots(figsize=(11, 5))
                     ydata_e = []
-                    for k in sorted(errores.keys(), key=lambda s: int(s.replace("error", ""))):
-                        serie = np.array([_omit_0_100(v) for v in errores[k][:L]], dtype=float)
-                        ydata_e.extend(serie[~np.isnan(serie)])
-                        ax.plot(x, serie, marker='o', linewidth=2, label=k)
+        
+                    for i, c in enumerate(curvas):
+                        serie_plot = y_final_list[i]
+                        ydata_e.extend(serie_plot[~np.isnan(serie_plot)])
+        
+                        ax.plot(
+                            x,
+                            serie_plot,
+                            marker='o',
+                            linewidth=2,
+                            label=c["label"]
+                        )
         
                     # Misma X que HIDRO (y DEMANDA) + aire en Y
-                    aplicar_formato_xy(ax, L=L, ticks_pos=ticks_pos, horas=horas,
-                                       y_values=ydata_e, ypad=0.05, xpad=0.5)
+                    aplicar_formato_xy(
+                        ax,
+                        L=L,
+                        ticks_pos=ticks_pos,
+                        horas=horas,
+                        y_values=ydata_e,
+                        ypad=0.05,
+                        xpad=0.5
+                    )
         
                     ax.grid(axis="y", linestyle="--", alpha=0.5)
                     ax.set_title("Error Porcentual de HIDRO")
-                    ax.set_xlabel("Hora"); ax.set_ylabel("Error absoluto (%)")
-                    ax.legend(); plt.tight_layout()
+                    ax.set_ylabel("%")
+                    ax.legend()
+                    plt.tight_layout()
                     hidro_figs1.append(fig)
+        
         except Exception:
             pass
         
@@ -728,7 +941,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 with cols[i]:
                     st.pyplot(fig)
                 plt.close(fig)
-
+                
         # =========================================================
         # ==================== EÓLICA Y ERROR =====================
         # =========================================================
@@ -776,67 +989,108 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         
                 ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
                 ax.grid(axis="y", linestyle="--", alpha=0.5)
-                ax.set_title("EÓLICO"); ax.set_xlabel("Hora"); ax.set_ylabel("MW"); ax.legend()
+                ax.set_title("EÓLICO"); ax.set_ylabel("MW"); ax.legend()
                 plt.tight_layout(); eolica_figs1.append(fig)
+            
+        except Exception:
+            pass 
         
-            # ============== Error EÓLICA ==============
-            try:
-                def _nz(x):
-                    try:
-                        if x is None: return 0.0
-                        v = float(x)
-                        if not isfinite(v) or isnan(v): return 0.0
-                        return v
-                    except Exception:
-                        return 0.0
+        # ============== Error EÓLICA ============== 
+        try:
+            if series_rer:
+                # Orden lógico: PDO, RDO A, RDO B, ... (solo los existentes)
+                orden_series_eol = [
+                    k for k in (["PDO"] + [f"RDO {l}" for l in rdo_letras])
+                    if k in series_rer
+                ]
         
-                def _rel_err_abs_pct(den, num):
-                    d_ = _nz(den); n_ = _nz(num)
-                    if d_ == 0.0: return 0.0
-                    return abs((n_ - d_) / d_) * 100.0
+                # Pares consecutivos: ("PDO","RDO A"), ("RDO A","RDO B"), ...
+                pares_eol = [
+                    (orden_series_eol[i], orden_series_eol[i+1])
+                    for i in range(len(orden_series_eol)-1)
+                ]
         
-                def _omit_0_100(v, tol=1e-9):
-                    try:
-                        f = float(v)
-                        if not isfinite(f): return np.nan
-                        if abs(f - 0.0) <= tol or abs(f - 100.0) <= tol: return np.nan
-                        return f
-                    except Exception:
-                        return np.nan
+                # 1) construir curvas iniciales
+                curvas = []  # [{label, y_clean}]
+                L_global = None
         
-                if series_rer:
-                    orden_series_eol = [k for k in (["PDO"] + [f"RDO {l}" for l in rdo_letras]) if k in series_rer]
-                    pares_eol = [(orden_series_eol[i], orden_series_eol[i+1]) for i in range(len(orden_series_eol)-1)]
-                    errores_eol = {}
-                    for idx, (ante, act) in enumerate(pares_eol, start=1):
-                        va, vb = series_rer[ante], series_rer[act]
-                        mL = min(len(va), len(vb), 48)
-                        if mL <= 0:
+                for (ante, act) in pares_eol:
+                    va = series_rer[ante]
+                    vb = series_rer[act]
+                    mL = min(len(va), len(vb), 48)
+                    if mL <= 0:
+                        continue
+        
+                    etiqueta = f"Error {ante} - {act}"
+                    vals = [_rel_err_abs_pct(va[i], vb[i]) for i in range(mL)]
+                    y_clean = np.array([_omit_0_100(v) for v in vals], dtype=float)
+        
+                    if L_global is None:
+                        L_global = mL
+                    else:
+                        L_global = min(L_global, mL)
+        
+                    curvas.append({
+                        "label": etiqueta,
+                        "y_clean": y_clean
+                    })
+        
+                if curvas:
+                    L = L_global
+                    x = np.arange(L)
+        
+                    # 2) detectar inicio y fin reales de cada serie
+                    for c in curvas:
+                        ysub = c["y_clean"][:L]
+                        not_nan = np.where(~np.isnan(ysub))[0]
+                        if len(not_nan) == 0:
+                            c["start_idx"] = None
+                            c["end_idx"] = None
+                        else:
+                            c["start_idx"] = int(not_nan[0])
+                            c["end_idx"]   = int(not_nan[-1])
+        
+                    # 3) apagar la anterior cuando arranca la nueva
+                    y_final_list = [c["y_clean"][:L].copy() for c in curvas]
+                    for i in range(1, len(curvas)):
+                        s_new = curvas[i]["start_idx"]
+                        if s_new is None:
                             continue
-                        errores_eol[f"error{idx}"] = [_rel_err_abs_pct(va[i], vb[i]) for i in range(mL)]
+                        for j in range(i):
+                            y_final_list[j][s_new:] = np.nan
         
-                    if errores_eol:
-                        L = min(len(v) for v in errores_eol.values() if v) or len(horas)
-                        x = np.arange(L)
+                    # 4) graficar todo en un mismo eje
+                    fig, ax = plt.subplots(figsize=(11, 5))
+                    ydata = []
         
-                        fig, ax = plt.subplots(figsize=(11, 5))
-                        ydata = []
-                        for k in sorted(errores_eol.keys(), key=lambda s: int(s.replace("error", ""))):
-                            serie = np.array([_omit_0_100(v) for v in errores_eol[k][:L]], dtype=float)
-                            ydata.extend(serie[~np.isnan(serie)])
-                            ax.plot(x, serie, marker='o', linewidth=2, label=k)
+                    for i, c in enumerate(curvas):
+                        serie_plot = y_final_list[i]
+                        ydata.extend(serie_plot[~np.isnan(serie_plot)])
+                        ax.plot(
+                            x,
+                            serie_plot,
+                            marker='o',
+                            linewidth=2,
+                            label=c["label"]
+                        )
         
-                        # Igual formato de ejes que la curva EÓLICA
-                        aplicar_formato_xy(ax, L=L, ticks_pos=ticks_pos, horas=horas,
-                                           y_values=ydata, ypad=0.05, xpad=0.5)
+                    # formato de ejes idéntico al resto
+                    aplicar_formato_xy(
+                        ax,
+                        L=L,
+                        ticks_pos=ticks_pos,
+                        horas=horas,
+                        y_values=ydata,
+                        ypad=0.05,
+                        xpad=0.5
+                    )
         
-                        ax.grid(axis="y", linestyle="--", alpha=0.5)
-                        ax.set_title("Error Porcentual de EÓLICO")
-                        ax.set_xlabel("Hora"); ax.set_ylabel("Error absoluto (%)")
-                        ax.legend(); plt.tight_layout()
-                        eolica_figs1.append(fig)
-            except Exception:
-                pass
+                    ax.grid(axis="y", linestyle="--", alpha=0.5)
+                    ax.set_title("Error Porcentual de EÓLICO")
+                    ax.set_ylabel("%")
+                    ax.legend()
+                    plt.tight_layout()
+                    eolica_figs1.append(fig)
         
         except Exception:
             pass
@@ -848,7 +1102,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 with cols[i]:
                     st.pyplot(fig)
                 plt.close(fig)
-
+                
         # =========================================================
         # =================== SOLAR Y ERROR =======================
         # =========================================================
@@ -905,67 +1159,87 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         
                 ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
                 ax.grid(axis="y", linestyle="--", alpha=0.5)
-                ax.set_title("SOLAR"); ax.set_xlabel("Hora"); ax.set_ylabel("MW"); ax.legend()
+                ax.set_title("SOLAR"); ax.set_ylabel("MW"); ax.legend()
                 plt.tight_layout(); solar_figs1.append(fig)
         
-            # Error Solar
-            try:
-                def _nz(x):
-                    try:
-                        if x is None: return 0.0
-                        v = float(x)
-                        if not isfinite(v) or isnan(v): return 0.0
-                        return v
-                    except Exception:
-                        return 0.0
+        except Exception:
+            pass
+                
         
-                def _rel_err_abs_pct(den, num):
-                    d_ = _nz(den); n_ = _nz(num)
-                    if d_ == 0.0: return 0.0
-                    return abs((n_ - d_) / d_) * 100.0
+        # Error Solar
+        try:
+            if series_sol:
+                # Armamos el orden lógico: PDO, RDO A, RDO B, ... (solo los que existen)
+                orden_series_sol = [
+                    k for k in (["PDO"] + [f"RDO {l}" for l in rdo_letras])
+                    if k in series_sol
+                ]
         
-                def _omit_0_100(v, tol=1e-9):
-                    try:
-                        f = float(v)
-                        if not isfinite(f): return np.nan
-                        if abs(f - 0.0) <= tol or abs(f - 100.0) <= tol: return np.nan
-                        return f
-                    except Exception:
-                        return np.nan
+                # Pares consecutivos para comparar
+                pares_sol = [
+                    (orden_series_sol[i], orden_series_sol[i+1])
+                    for i in range(len(orden_series_sol)-1)
+                ]
         
-                if series_sol:
-                    orden_series_sol = [k for k in (["PDO"] + [f"RDO {l}" for l in rdo_letras]) if k in series_sol]
-                    pares_sol = [(orden_series_sol[i], orden_series_sol[i+1]) for i in range(len(orden_series_sol)-1)]
-                    errores_sol = {}
-                    for idx, (ante, act) in enumerate(pares_sol, start=1):
-                        va, vb = series_sol[ante], series_sol[act]
-                        mL = min(len(va), len(vb), 48)
-                        if mL <= 0:
+                # errores_sol["Error PDO-RDO A"] = [...]
+                errores_sol = {}
+                for (ante, act) in pares_sol:
+                    va, vb = series_sol[ante], series_sol[act]
+                    mL = min(len(va), len(vb), 48)
+                    if mL <= 0:
+                        continue
+        
+                    etiqueta = f"Error {ante} - {act}"
+                    errores_sol[etiqueta] = [
+                        _rel_err_abs_pct(va[i], vb[i]) for i in range(mL)
+                    ]
+        
+                if errores_sol:
+                    L = min(len(v) for v in errores_sol.values() if v) or len(horas)
+                    x = np.arange(L)
+        
+                    fig, ax = plt.subplots(figsize=(11, 5))
+                    ydata = []
+        
+                    # ploteamos en el mismo orden lógico PDO→RDO A→RDO B→...
+                    for (ante, act) in pares_sol:
+                        etiqueta = f"Error {ante} - {act}"
+                        if etiqueta not in errores_sol:
                             continue
-                        errores_sol[f"error{idx}"] = [_rel_err_abs_pct(va[i], vb[i]) for i in range(mL)]
         
-                    if errores_sol:
-                        L = min(len(v) for v in errores_sol.values() if v) or len(horas)
-                        x = np.arange(L)
+                        serie_vals = errores_sol[etiqueta]
+                        serie = np.array(
+                            [_omit_0_100(v) for v in serie_vals[:L]],
+                            dtype=float
+                        )
         
-                        fig, ax = plt.subplots(figsize=(11, 5))
-                        ydata = []
-                        for k in sorted(errores_sol.keys(), key=lambda s: int(s.replace("error", ""))):
-                            serie = np.array([_omit_0_100(v) for v in errores_sol[k][:L]], dtype=float)
-                            ydata.extend(serie[~np.isnan(serie)])
-                            ax.plot(x, serie, marker='o', linewidth=2, label=k)
+                        ydata.extend(serie[~np.isnan(serie)])
+                        ax.plot(
+                            x,
+                            serie,
+                            marker='o',
+                            linewidth=2,
+                            label=etiqueta
+                        )
         
-                        # Misma X que el gráfico SOLAR + “aire” en Y
-                        aplicar_formato_xy(ax, L=L, ticks_pos=ticks_pos, horas=horas,
-                                           y_values=ydata, ypad=0.05, xpad=0.5)
+                    # Misma X que el gráfico SOLAR + “aire” en Y
+                    aplicar_formato_xy(
+                        ax,
+                        L=L,
+                        ticks_pos=ticks_pos,
+                        horas=horas,
+                        y_values=ydata,
+                        ypad=0.05,
+                        xpad=0.5
+                    )
         
-                        ax.grid(axis="y", linestyle="--", alpha=0.5)
-                        ax.set_title("Error Porcentual de SOLAR")
-                        ax.set_xlabel("Hora"); ax.set_ylabel("Error absoluto (%)")
-                        ax.legend(); plt.tight_layout()
-                        solar_figs1.append(fig)
-            except Exception:
-                pass
+                    ax.grid(axis="y", linestyle="--", alpha=0.5)
+                    ax.set_title("Error Porcentual de SOLAR")
+                    ax.set_ylabel("%")
+                    ax.legend()
+                    plt.tight_layout()
+                    solar_figs1.append(fig)
+        
         except Exception:
             pass
         
@@ -975,7 +1249,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 with cols[i]:
                     st.pyplot(fig)
                 plt.close(fig)
-      
+    
     with tab4:
         # =========================================================
         # ======================== CMG ============================
@@ -983,25 +1257,34 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         try:
             st.markdown("### CMG")
             stem_file = "CMg - Barra ($ por MWh)"
-            cols = st.columns(len(barras))
-            for i, barra in enumerate(barras):
-                with cols[i]:
-                    df_pdo = cargar_dataframe(pdo_res, stem_file)
-                    datosPDO = rellenar_hasta_48(extraer_columna(df_pdo, barra))
-                    if not datosPDO: 
-                        continue
-                    series_barra = {"PDO": datosPDO}
-                    for letra in rdo_letras:
-                        rdo_res = work_dir / f"RDO_{letra}_{fecha_str}" / f"YUPANA_{ddmm}{letra}" / "RESULTADOS"
-                        df_rdo   = cargar_dataframe(rdo_res, stem_file)
-                        datosRDO = rellenar_hasta_48(extraer_columna(df_rdo, barra))
-                        if datosRDO: series_barra[f"RDO {letra}"] = datosRDO
-                    fig, ax = plt.subplots(figsize=(11, 5))
-                    ok = _plot_cmg_barra_en_axes(ax, barra, series_barra, horas, ticks_pos, ticks_lbl)
-                    if ok: plt.tight_layout(); st.pyplot(fig); plt.close(fig)
+            df_pdo = cargar_dataframe(pdo_res, stem_file)
+    
+            for barra in barras:
+                datosPDO = rellenar_hasta_48(extraer_columna(df_pdo, barra))
+                if not datosPDO:
+                    continue
+    
+                series_barra = {"PDO": datosPDO}
+    
+                # cargo todos los RDO para esa barra
+                for letra in rdo_letras:
+                    rdo_res = work_dir / f"RDO_{letra}_{fecha_str}" / f"YUPANA_{ddmm}{letra}" / "RESULTADOS"
+                    df_rdo = cargar_dataframe(rdo_res, stem_file)
+                    datosRDO = rellenar_hasta_48(extraer_columna(df_rdo, barra))
+                    if datosRDO:
+                        series_barra[f"RDO {letra}"] = datosRDO
+    
+                # ploteo
+                fig, ax = plt.subplots(figsize=(11, 5))
+                ok = _plot_cmg_barra_en_axes(ax, barra, series_barra, horas, ticks_pos, ticks_lbl)
+                if ok:
+                    plt.tight_layout()
+                    st.pyplot(fig)
+                plt.close(fig)
+    
         except Exception:
             pass
-    
+        
     with tab5:
         # =========================================================
         # ==================== HISTORICO HIDRO ====================
@@ -1155,7 +1438,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     ax.set_ylim(y_min, y_max)
                 ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
                 ax.grid(axis="y", linestyle="--", alpha=0.5)
-                ax.set_title("HISTÓRICO HIDRO"); ax.set_xlabel("Hora"); ax.set_ylabel("MW")
+                ax.set_title("HISTÓRICO HIDRO"); ax.set_ylabel("MW")
                 ax.legend(title="Fecha"); plt.tight_layout(); hidro_figs2.append(fig)
         except Exception:
             pass
@@ -1264,7 +1547,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     ax.set_ylim(max(0, math.floor(min(y_all)) - 10), math.ceil(max(y_all)) + 10)
                 ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
                 ax.grid(axis="y", linestyle="--", alpha=0.5)
-                ax.set_title("HISTÓRICO DEMANDA"); ax.set_xlabel("Hora"); ax.set_ylabel("MW")
+                ax.set_title("HISTÓRICO DEMANDA"); ax.set_ylabel("MW")
                 ax.legend(title="Fecha"); plt.tight_layout(); demanda_figs2.append(fig)
         except Exception:
             pass
@@ -1381,7 +1664,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     ax.set_ylim(max(0, math.floor(min(y_all)) - 10), math.ceil(max(y_all)) + 10)
                 ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
                 ax.grid(axis="y", linestyle="--", alpha=0.5)
-                ax.set_title("HISTÓRICO EÓLICO"); ax.set_xlabel("Hora"); ax.set_ylabel("MW")
+                ax.set_title("HISTÓRICO EÓLICO"); ax.set_ylabel("MW")
                 ax.legend(title="Fecha"); plt.tight_layout(); eolica_figs2.append(fig)
         except Exception:
             pass
@@ -1504,7 +1787,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     ax.set_ylim(max(0, math.floor(min(y_all)) - 10), math.ceil(max(y_all)) + 10)
                 ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
                 ax.grid(axis="y", linestyle="--", alpha=0.5)
-                ax.set_title("HISTÓRICO SOLAR"); ax.set_xlabel("Hora"); ax.set_ylabel("MW")
+                ax.set_title("HISTÓRICO SOLAR"); ax.set_ylabel("MW")
                 ax.legend(title="Fecha"); plt.tight_layout(); solar_figs2.append(fig)
         except Exception:
             pass
@@ -1553,7 +1836,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 ax.bar(x_pas, v_pas, width=bw, label="H. PASADA")
                 ax.bar(x_reg, v_reg, width=bw, label="H. REGULACION")
                 ax.set_xticks(ticks_pos); ax.set_xticklabels(ticks_lbl, rotation=90, ha="center", fontsize=8)
-                ax.set_title("H. PASADA - H. REGULACIÓN"); ax.set_xlabel("Hora"); ax.set_ylabel("MW")
+                ax.set_title("H. PASADA - H. REGULACIÓN"); ax.set_ylabel("MW")
                 ax.grid(axis="y", linestyle="--", alpha=0.4); ax.legend(); plt.tight_layout()
                 hidro_figs.append(fig)
         except Exception:
@@ -1682,7 +1965,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     ax.set_ylim(y_min, y_max)
                 ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
                 ax.grid(axis="y", linestyle="--", alpha=0.5)
-                ax.set_title("HISTÓRICO HIDRO"); ax.set_xlabel("Hora"); ax.set_ylabel("MW")
+                ax.set_title("HISTÓRICO HIDRO"); ax.set_ylabel("MW")
                 ax.legend(title="Fecha"); plt.tight_layout()
                 plt.close(fig)
                 
@@ -1702,7 +1985,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     for rect, val in zip(bars, promedios):
                         ax.text(rect.get_x()+rect.get_width()/2, rect.get_height()+1, f"{val:.0f}", ha="center", va="bottom", fontsize=9)
                     ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-                    ax.set_xlabel("Fecha"); ax.set_ylabel("MW")
+                    ax.set_ylabel("MW")
                     ax.set_title("HISTÓRICO HIDRO (Potencia Promedio Diario)")
                     ax.grid(axis="y", linestyle="--", alpha=0.4)
                     plt.tight_layout(); hidro_figs.append(fig)
@@ -1723,8 +2006,8 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     for rect, val in zip(bars, maximos):
                         ax.text(rect.get_x()+rect.get_width()/2, rect.get_height()+1, f"{val:.0f}", ha="center", va="bottom", fontsize=9)
                     ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-                    ax.set_xlabel("Fecha"); ax.set_ylabel("MWh")
-                    ax.set_title("HISTÓRICO HIDRO (Energía Máxima Diaria)")
+                    ax.set_ylabel("MWh")
+                    ax.set_title("HISTÓRICO HIDRO (Energía Diaria)")
                     ax.grid(axis="y", linestyle="--", alpha=0.4)
                     plt.tight_layout(); hidro_figs.append(fig)
         except Exception:
@@ -1812,7 +2095,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     ax.set_ylim(max(0, math.floor(min(y_all)) - 10), math.ceil(max(y_all)) + 10)
                 ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
                 ax.grid(axis="y", linestyle="--", alpha=0.5)
-                ax.set_title("HISTÓRICO DEMANDA"); ax.set_xlabel("Hora"); ax.set_ylabel("MW")
+                ax.set_title("HISTÓRICO DEMANDA"); ax.set_ylabel("MW")
                 ax.legend(title="Fecha"); plt.tight_layout()
                 plt.close(fig)
     
@@ -1833,7 +2116,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                         ax.text(rect.get_x()+rect.get_width()/2, rect.get_height(), f"{val:.0f}",
                                 ha="center", va="bottom", fontsize=9, clip_on=True)
                     ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-                    ax.set_xlabel("Fecha"); ax.set_ylabel("MW"); ax.set_title("HISTÓRICO DEMANDA (Potencia Promedio Diario)")
+                    ax.set_ylabel("MW"); ax.set_title("HISTÓRICO DEMANDA (Potencia Promedio Diario)")
                     ax.grid(axis="y", linestyle="--", alpha=0.4); plt.tight_layout(); demanda_figs.append(fig)
     
                 # Máximo diario
@@ -1853,7 +2136,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                         ax.text(rect.get_x()+rect.get_width()/2, rect.get_height(), f"{val:.0f}",
                                 ha="center", va="bottom", fontsize=9, clip_on=True)
                     ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-                    ax.set_xlabel("Fecha"); ax.set_ylabel("MW"); ax.set_title("HISTÓRICO DEMANDA (Máxima Diaria)")
+                    ax.set_ylabel("MW"); ax.set_title("HISTÓRICO DEMANDA (Máxima Diaria)")
                     ax.grid(axis="y", linestyle="--", alpha=0.4); plt.tight_layout(); demanda_figs.append(fig)
         except Exception:
             pass
@@ -1948,7 +2231,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     ax.set_ylim(max(0, math.floor(min(y_all)) - 10), math.ceil(max(y_all)) + 10)
                 ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
                 ax.grid(axis="y", linestyle="--", alpha=0.5)
-                ax.set_title("HISTÓRICO EÓLICO"); ax.set_xlabel("Hora"); ax.set_ylabel("MW")
+                ax.set_title("HISTÓRICO EÓLICO"); ax.set_ylabel("MW")
                 ax.legend(title="Fecha"); plt.tight_layout()
                 plt.close(fig)
     
@@ -1967,7 +2250,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     for rect, val in zip(bars, promedios):
                         ax.text(rect.get_x()+rect.get_width()/2, rect.get_height(), f"{val:.0f}", ha="center", va="bottom", fontsize=9)
                     ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-                    ax.set_xlabel("Fecha"); ax.set_ylabel("MW")
+                    ax.set_ylabel("MW")
                     ax.set_title("HISTÓRICO EÓLICO (Potencia Promedio Diario)")
                     ax.grid(axis="y", linestyle="--", alpha=0.4); plt.tight_layout(); eolica_figs.append(fig)
     
@@ -2048,7 +2331,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                         for xlbl, a, b in zip(fechas, prom_norte, prom_centro):
                             ax.text(xlbl, a+b+1, f"{a+b:.0f}", ha="center", va="bottom", fontsize=9)
     
-                        ax.set_xlabel("Fecha"); ax.set_ylabel("MW")
+                        ax.set_ylabel("MW")
                         ax.set_title("HISTÓRICO EÓLICO (Potencia Promedio Diario) - Norte/Centro")
                         ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
                         ax.grid(axis="y", linestyle="--", alpha=0.4)
@@ -2073,8 +2356,8 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     for rect, val in zip(bars, maximos):
                         ax.text(rect.get_x()+rect.get_width()/2, rect.get_height(), f"{val:.0f}", ha="center", va="bottom", fontsize=9)
                     ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-                    ax.set_xlabel("Fecha"); ax.set_ylabel("MWh")
-                    ax.set_title("HISTÓRICO EÓLICO (Energía Máxima Diaria)")
+                    ax.set_ylabel("MWh")
+                    ax.set_title("HISTÓRICO EÓLICO (Energía Diaria)")
                     ax.grid(axis="y", linestyle="--", alpha=0.4); plt.tight_layout(); eolica_figs.append(fig)
         except Exception:
             pass
@@ -2168,7 +2451,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     ax.set_ylim(max(0, math.floor(min(y_all)) - 10), math.ceil(max(y_all)) + 10)
                 ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
                 ax.grid(axis="y", linestyle="--", alpha=0.5)
-                ax.set_title("HISTÓRICO SOLAR"); ax.set_xlabel("Hora"); ax.set_ylabel("MW")
+                ax.set_title("HISTÓRICO SOLAR"); ax.set_ylabel("MW")
                 ax.legend(title="Fecha"); plt.tight_layout()
                 plt.close(fig)
                 
@@ -2188,7 +2471,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                         ax.text(rect.get_x()+rect.get_width()/2, rect.get_height(), f"{val:.0f}",
                                 ha="center", va="bottom", fontsize=9, clip_on=True)
                     ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-                    ax.set_xlabel("Fecha"); ax.set_ylabel("MW")
+                    ax.set_ylabel("MW")
                     ax.set_title("HISTÓRICO SOLAR (Potencia Promedio Diario)")
                     ax.grid(axis="y", linestyle="--", alpha=0.4); plt.tight_layout(); solar_figs.append(fig)
     
@@ -2208,8 +2491,8 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                         ax.text(rect.get_x()+rect.get_width()/2, rect.get_height(), f"{val:.0f}",
                                 ha="center", va="bottom", fontsize=9)
                     ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-                    ax.set_xlabel("Fecha"); ax.set_ylabel("MWh")
-                    ax.set_title("HISTÓRICO SOLAR (Energía Máxima Diaria)")
+                    ax.set_ylabel("MWh")
+                    ax.set_title("HISTÓRICO SOLAR (Energía Diaria)")
                     ax.grid(axis="y", linestyle="--", alpha=0.4); plt.tight_layout(); solar_figs.append(fig)
         except Exception:
             pass
@@ -2374,34 +2657,6 @@ if gen_generar:
             plt.close(fig)
             
         # ERROR HIDRO (PDF)
-        def _nz(x):
-            try:
-                if x is None:
-                    return 0.0
-                v = float(x)
-                if not isfinite(v) or isnan(v):
-                    return 0.0
-                return v
-            except Exception:
-                return 0.0
-        
-        def _rel_err_abs_pct(den, num):
-            d = _nz(den); n = _nz(num)
-            if d == 0.0:
-                return 0.0
-            return abs((n - d) / d) * 100.0
-        
-        def _omit_0_100(v, tol=1e-9):
-            try:
-                f = float(v)
-                if not isfinite(f):
-                    return np.nan
-                if abs(f - 0.0) <= tol or abs(f - 100.0) <= tol:
-                    return np.nan
-                return f
-            except Exception:
-                return np.nan
-        
         if series_h:
             orden_series = [k for k in (["PDO"] + [f"RDO {l}" for l in rdo_letras]) if k in series_h]
             pares = [(orden_series[i], orden_series[i+1]) for i in range(len(orden_series)-1)]
@@ -2445,11 +2700,7 @@ if gen_generar:
                 if k == "H. PASADA" and c_pas is None: c_pas = c
                 if k == "H. REGULACION" and c_reg is None: c_reg = c
             return c_pas, c_reg
-        def _lee_ieod_bytes(y2, m2, M2, d2):
-            ddmm2 = f"{d2:02d}{m2:02d}"
-            url  = base_ieod.format(y=y2, m=f"{m2:02d}", M=M2, d=f"{d2:02d}", ddmm=ddmm2)
-            r = requests.get(url, timeout=40); r.raise_for_status()
-            return io.BytesIO(r.content)
+        
         def _extrae_listas_48(fbytes):
             df = pd.read_excel(fbytes, sheet_name="TIPO_RECURSO", header=5, engine="openpyxl")
             c_pas, c_reg = _find_cols(df.columns)
@@ -2642,26 +2893,11 @@ if gen_generar:
             "RER"     : "Rer y No COES - Despacho (MW)"
         }
 
-        def _sin_acentos(s: str) -> str:
-            return unicodedata.normalize("NFKD", str(s)).encode("ASCII", "ignore").decode()
-
         def _lee_ieod_bytes(y2, m2, M2, d2):
             ddmm2 = f"{d2:02d}{m2:02d}"
             url  = base_ieod.format(y=y2, m=f"{m2:02d}", M=M2, d=f"{d2:02d}", ddmm=ddmm2)
             r = requests.get(url, timeout=40); r.raise_for_status()
             return io.BytesIO(r.content)
-
-        def _extrae_demanda_48(fbytes):
-            df = pd.read_excel(fbytes, sheet_name="TIPO_RECURSO", header=5, engine="openpyxl")
-            col_demanda = None
-            for c in df.columns:
-                if isinstance(c, str):
-                    c_norm = _sin_acentos(c).upper().strip()
-                    if "TOTAL" in c_norm:
-                        col_demanda = c; break
-            if not col_demanda: return None
-            vals = pd.to_numeric(df[col_demanda].iloc[:48], errors="coerce").fillna(0.0).astype(float).tolist()
-            return (vals + [0.0]*48)[:48]
 
         # DEMANDA actual (PDO vs RDO A–E)
         series_dem = {}
@@ -2699,30 +2935,6 @@ if gen_generar:
 
         # ERROR DEMANDA (PDF)
         try:
-            def _nz(x):
-                try:
-                    v = float(x) if x is not None else 0.0
-                    return v if np.isfinite(v) else 0.0
-                except Exception:
-                    return 0.0
-        
-            def _rel_err_abs_pct(den, num):
-                d_ = _nz(den); n_ = _nz(num)
-                if d_ == 0.0: 
-                    return 0.0
-                return abs((n_ - d_) / d_) * 100.0
-        
-            def _omit_0_100(v, tol=1e-9):
-                try:
-                    f = float(v)
-                    if not np.isfinite(f): 
-                        return np.nan
-                    if abs(f - 0.0) <= tol or abs(f - 100.0) <= tol:
-                        return np.nan
-                    return f
-                except Exception:
-                    return np.nan
-        
             if series_dem:
                 orden_series_dem = [k for k in (["PDO"] + [f"RDO {l}" for l in rdo_letras]) if k in series_dem]
                 pares_dem = [(orden_series_dem[i], orden_series_dem[i+1]) for i in range(len(orden_series_dem)-1)]
@@ -2963,30 +3175,6 @@ if gen_generar:
 
         # ERROR EÓLICO (PDF)
         try:
-            def _nz(x):
-                try:
-                    v = float(x) if x is not None else 0.0
-                    return v if np.isfinite(v) else 0.0
-                except Exception:
-                    return 0.0
-        
-            def _rel_err_abs_pct(den, num):
-                d_ = _nz(den); n_ = _nz(num)
-                if d_ == 0.0: 
-                    return 0.0
-                return abs((n_ - d_) / d_) * 100.0
-        
-            def _omit_0_100(v, tol=1e-9):
-                try:
-                    f = float(v)
-                    if not np.isfinite(f): 
-                        return np.nan
-                    if abs(f - 0.0) <= tol or abs(f - 100.0) <= tol:
-                        return np.nan
-                    return f
-                except Exception:
-                    return np.nan
-        
             if series_rer:
                 orden_series_eol = [k for k in (["PDO"] + [f"RDO {l}" for l in rdo_letras]) if k in series_rer]
                 pares_eol = [(orden_series_eol[i], orden_series_eol[i+1]) for i in range(len(orden_series_eol)-1)]
@@ -3323,33 +3511,6 @@ if gen_generar:
         
         # ERROR SOLAR (PDF)
         try:
-            import numpy as np
-            from datetime import datetime, timedelta
-        
-            def _nz(x):
-                try:
-                    v = float(x) if x is not None else 0.0
-                    return v if np.isfinite(v) else 0.0
-                except Exception:
-                    return 0.0
-        
-            def _rel_err_abs_pct(den, num):
-                d_ = _nz(den); n_ = _nz(num)
-                if d_ == 0.0:
-                    return 0.0
-                return abs((n_ - d_) / d_) * 100.0
-        
-            def _omit_0_100(v, tol=1e-9):
-                try:
-                    f = float(v)
-                    if not np.isfinite(f):
-                        return np.nan
-                    if abs(f - 0.0) <= tol or abs(f - 100.0) <= tol:
-                        return np.nan
-                    return f
-                except Exception:
-                    return np.nan
-        
             if series_sol:
                 orden_series_sol = [k for k in (["PDO"] + [f"RDO {l}" for l in rdo_letras]) if k in series_sol]
                 pares_sol = [(orden_series_sol[i], orden_series_sol[i+1]) for i in range(len(orden_series_sol)-1)]
@@ -3541,7 +3702,8 @@ if gen_generar:
 
     try:
         pdf_bytes = (work_dir / "Reporte.pdf").read_bytes()
+        st.download_button("Descargar PDF", pdf_bytes, "Reporte.pdf", "application/pdf", type="primary")
     except Exception:
-        pass
+        pass 
         
 st.caption("© Reporte Programa Diario de Operación - USGE")
