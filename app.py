@@ -10,6 +10,7 @@ import streamlit as st
 from math import isfinite, isnan
 import numpy as np
 import re, unicodedata
+from zoneinfo import ZoneInfo
 
 import warnings
 warnings.filterwarnings(
@@ -430,6 +431,18 @@ def _omit_0_100(v, tol=1e-9):
         return f
     except Exception:
         return np.nan
+
+def _norm(txt: str) -> str:
+    s = unicodedata.normalize("NFKD", str(txt)).encode("ASCII","ignore").decode("ASCII")
+    return re.sub(r"\s+", " ", s.strip().upper())
+
+def _find_cols_ieod(df):
+    c_pas = c_reg = None
+    for c in df.columns:
+        k = _norm(c)
+        if k == "H. PASADA" and c_pas is None: c_pas = c
+        if k == "H. REGULACION" and c_reg is None: c_reg = c
+    return c_pas, c_reg
 
 # -----------------------------------------------------------------------------
 # ------------------------------- PANTALLA ------------------------------------
@@ -1293,18 +1306,6 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         hidro_figs2 = []
         # Histórico IEOD (HIDRO)
         try:    
-            def _norm(txt: str) -> str:
-                s = unicodedata.normalize("NFKD", str(txt)).encode("ASCII","ignore").decode("ASCII")
-                return re.sub(r"\s+", " ", s.strip().upper())
-        
-            def _find_cols_ieod(df):
-                c_pas = c_reg = None
-                for c in df.columns:
-                    k = _norm(c)
-                    if k == "H. PASADA" and c_pas is None: c_pas = c
-                    if k == "H. REGULACION" and c_reg is None: c_reg = c
-                return c_pas, c_reg
-        
             series_por_dia = []
             dias = (fin - ini).days + 1
             for k in range(dias):
@@ -1844,18 +1845,6 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
     
         # Histórico IEOD (HIDRO)
         try:    
-            def _norm(txt: str) -> str:
-                s = unicodedata.normalize("NFKD", str(txt)).encode("ASCII","ignore").decode("ASCII")
-                return re.sub(r"\s+", " ", s.strip().upper())
-        
-            def _find_cols_ieod(df):
-                c_pas = c_reg = None
-                for c in df.columns:
-                    k = _norm(c)
-                    if k == "H. PASADA" and c_pas is None: c_pas = c
-                    if k == "H. REGULACION" and c_reg is None: c_reg = c
-                return c_pas, c_reg
-        
             series_por_dia = []
             dias = (fin - ini).days + 1
             for k in range(dias):
@@ -2321,7 +2310,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                         prom_centro.append(sum(vc)/N_INTERVALOS)
                     except Exception:
                         pass
-    
+                    
                     # Gráfico apilado en pantalla
                     if fechas and prom_norte and prom_centro and len(fechas)==len(prom_norte)==len(prom_centro):
                         fig, ax = plt.subplots(figsize=(9, 5))
@@ -2524,8 +2513,10 @@ gen_generar = st.sidebar.button("Generar", type="primary")
 st.title("Reporte Programa Diario de Operación")
 y, m, d = fecha_sel.year, f"{fecha_sel.month:02d}", f"{fecha_sel.day:02d}"
 M = MES_TXT[int(m) - 1]
-fecha_hum = fecha_sel.strftime("%d/%m/%Y")
-now_str = datetime.now().strftime("%H:%M")
+
+ahora_pe = datetime.now(ZoneInfo("America/Lima"))
+fecha_hum = ahora_pe.strftime("%d/%m/%Y")
+now_str   = ahora_pe.strftime("%H:%M")
 fecha_str = f"{y}{m}{d}"
 ddmm = f"{d}{m}"
 
@@ -2548,12 +2539,12 @@ if gen_generar:
     pdf_path = work_dir / "Reporte.pdf"
     with st.spinner("Generando PDF…"):
         pdf = PdfPages(pdf_path)
-
+        
         # Portada
         fig, ax = plt.subplots(figsize=(11, 6)); ax.axis("off")
         ax.text(0.5, 0.7, "Reporte Programa Diario de Operación", ha="center", va="center", fontsize=20)
         ax.text(0.5, 0.5, f"Fecha: {fecha_hum}", ha="center", va="center", fontsize=14)
-        ax.text(0.5, 0.4, f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}", ha="center", va="center", fontsize=12)
+        ax.text(0.5, 0.4, f"Generado: {ahora_pe.strftime('%d/%m/%Y %H:%M')} (hora Perú)", ha="center", va="center", fontsize=12)
         pdf.savefig(fig); plt.close(fig)
 
         # Tabla MOTIVOS
