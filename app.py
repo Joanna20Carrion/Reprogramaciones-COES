@@ -11,6 +11,7 @@ from math import isfinite, isnan
 import numpy as np
 import re, unicodedata
 from zoneinfo import ZoneInfo
+import plotly.graph_objects as go
 
 import warnings
 warnings.filterwarnings(
@@ -509,7 +510,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
     pdo_res = work_dir / f"PDO_{fecha_str}" / f"YUPANA_{fecha_str}" / "RESULTADOS"
     
     # ==== Pestañas ====
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Demanda", "Motivos, Costo Total e Índices", "Hidro, Eólico y Solar", "CMG" , "Histórico del IEOD","Histórico de Potencia y Energía"])
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["Demanda", "Motivos, Costo Total e Índices", "Hidro, Eólico y Solar", "CMG" , "Histórico del IEOD","Histórico de Potencia y Energía", "Térmicas"])
     
     with tab1:
         # =========================================================
@@ -1405,7 +1406,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         # ==================== HISTORICO HIDRO ====================
         # =========================================================
         st.markdown("### HIDRO")
-        hidro_figs2 = []
+        
         # Histórico IEOD (HIDRO)
         try:    
             series_por_dia = []
@@ -1423,200 +1424,223 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 v_sum = [pas[i] + reg[i] for i in range(48)]
                 series_por_dia.append((f.strftime("%Y-%m-%d"), v_sum))
         
-            #if series_por_dia:
-                #fig, ax = plt.subplots(figsize=(12, 6))
-                #xs = list(range(48))
-                #for lbl, v_sum in series_por_dia:
-                    #ax.plot(xs, v_sum, marker="o", linewidth=2, label=lbl)
-                #ax.set_xticks(ticks_pos); ax.set_xticklabels(ticks_lbl, rotation=90, ha="right", fontsize=8)
-                #ax.set_title("HISTÓRICO HIDRO DE IEOD"); ax.set_xlabel("Hora"); ax.set_ylabel("MW")
-                #ax.grid(axis="y", linestyle="--", alpha=0.4); ax.legend(title="Fecha"); plt.tight_layout()
-                #hidro_figs2.append(fig)
+            # Si quisieras mostrar el histórico IEOD por separado,
+            # aquí podrías armar otra figura (matplotlib o plotly).
         except Exception as e:
             st.warning(f"IEOD histórico no disponible: {e}")
-    
+        
         # Histórico HIDRO de RPO A
         try:
-            series_dia={}; dias=(fin-ini).days+1
-            stem_hidro = "Hidro - Despacho (MW)"; stem_rer="Rer y No COES - Despacho (MW)"
-            barras_rer_up = ["CARPAPATA","LA JOYA","STACRUZ12","HUASAHUASI","RONCADOR","PURMACANA","NIMPERIAL","PIZARRAS",
-                             "POECHOS2","CANCHAYLLO","CHANCAY","RUCUY","RUNATULLOII","RUNATULLOIII","YANAPAMPA","POTRERO",
-                             "CH MARANON","YARUCAYA","CHHER1","CHANGELI","CHANGELII","CHANGELIII","8AGOSTO","RENOVANDESH1",
-                             "EL CARMEN","CH MANTA","SANTA ROSA 1","SANTA ROSA 2","TUPURI","CH HUALLIN"]
+            series_dia = {}
+            dias = (fin - ini).days + 1
+            stem_hidro = "Hidro - Despacho (MW)"
+            stem_rer   = "Rer y No COES - Despacho (MW)"
+            barras_rer_up = [
+                "CARPAPATA","LA JOYA","STACRUZ12","HUASAHUASI","RONCADOR","PURMACANA","NIMPERIAL","PIZARRAS",
+                "POECHOS2","CANCHAYLLO","CHANCAY","RUCUY","RUNATULLOII","RUNATULLOIII","YANAPAMPA","POTRERO",
+                "CH MARANON","YARUCAYA","CHHER1","CHANGELI","CHANGELII","CHANGELIII","8AGOSTO","RENOVANDESH1",
+                "EL CARMEN","CH MANTA","SANTA ROSA 1","SANTA ROSA 2","TUPURI","CH HUALLIN"
+            ]
             for k in range(dias):
                 f = ini + timedelta(days=k)
-                yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d"); M_TXT = MES_TXT[f.month-1]
+                yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d")
+                M_TXT = MES_TXT[f.month-1]
                 url_zip = base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra="A")
                 carpeta = work_dir / f"RDO_A_{yk}{mk}{dk}"
                 resultados = carpeta / f"YUPANA_{dk}{mk}A" / "RESULTADOS"
                 if not resultados.exists():
                     try:
                         r = requests.get(url_zip, timeout=40); r.raise_for_status()
-                        with zipfile.ZipFile(io.BytesIO(r.content)) as zf: zf.extractall(path=carpeta)
+                        with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+                            zf.extractall(path=carpeta)
                     except Exception:
                         continue
                 th = rellenar_hasta_48(totales_hidro(cargar_dataframe(resultados, stem_hidro)))
-                tr = rellenar_hasta_48(totales_rer (cargar_dataframe(resultados, stem_rer), [x.upper() for x in barras_rer_up]))
-                if th and tr: series_dia[f.strftime("%Y-%m-%d")] = suma_elementos(th, tr)
-            #if series_dia:
-                #fig, ax = plt.subplots(figsize=(11,5)); y_plot=[]
-                #for fecha_lbl, valores in series_dia.items():
-                    #xlab, yv = recortar_ceros_inicio(valores, horas)
-                    #if not yv: continue
-                    #y_plot.extend(yv); ax.plot(xlab, yv, marker="o", linewidth=2, label=fecha_lbl)
-                #if y_plot:
-                    #min_y = max(0, math.floor(min(y_plot)) - 10); max_y = math.ceil(max(y_plot)) + 10
-                    #ax.set_ylim(min_y, max_y); ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-                    #ax.grid(axis="y", linestyle="--", alpha=0.5)
-                    #ax.set_xticks(ticks_pos); ax.set_xticklabels(ticks_lbl, rotation=90, ha="right", fontsize=8)
-                    #ax.set_title("HISTÓRICO HIDRO DE RPO A"); ax.set_xlabel("Hora"); ax.set_ylabel("MW")
-                    #ax.legend(title="Fecha"); plt.tight_layout()
-                    #hidro_figs2.append(fig)
+                tr = rellenar_hasta_48(totales_rer(cargar_dataframe(resultados, stem_rer), [x.upper() for x in barras_rer_up]))
+                if th and tr:
+                    series_dia[f.strftime("%Y-%m-%d")] = suma_elementos(th, tr)
         except Exception:
             pass
-    
-        # Fusión 
+        
+        # Fusión (IEOD + RPO A último día) con Plotly interactivo
         try:
-            series_7={}
-            stem_hidro = "Hidro - Despacho (MW)"; stem_rer="Rer y No COES - Despacho (MW)"
-            barras_rer_up = ["CARPAPATA","LA JOYA","STACRUZ12","HUASAHUASI","RONCADOR","PURMACANA","NIMPERIAL","PIZARRAS",
-                             "POECHOS2","CANCHAYLLO","CHANCAY","RUCUY","RUNATULLOII","RUNATULLOIII","YANAPAMPA","POTRERO",
-                             "CH MARANON","YARUCAYA","CHHER1","CHANGELI","CHANGELII","CHANGELIII","8AGOSTO","RENOVANDESH1",
-                             "EL CARMEN","CH MANTA","SANTA ROSA 1","SANTA ROSA 2","TUPURI","CH HUALLIN"]
-            ini_ieod = ini; fin_ieod = fin - timedelta(days=1)
+            series_7 = {}
+            stem_hidro = "Hidro - Despacho (MW)"
+            stem_rer   = "Rer y No COES - Despacho (MW)"
+            barras_rer_up = [
+                "CARPAPATA","LA JOYA","STACRUZ12","HUASAHUASI","RONCADOR","PURMACANA","NIMPERIAL","PIZARRAS",
+                "POECHOS2","CANCHAYLLO","CHANCAY","RUCUY","RUNATULLOII","RUNATULLOIII","YANAPAMPA","POTRERO",
+                "CH MARANON","YARUCAYA","CHHER1","CHANGELI","CHANGELII","CHANGELIII","8AGOSTO","RENOVANDESH1",
+                "EL CARMEN","CH MANTA","SANTA ROSA 1","SANTA ROSA 2","TUPURI","CH HUALLIN"
+            ]
+        
+            # IEOD: desde ini hasta fin-1
+            ini_ieod = ini
+            fin_ieod = fin - timedelta(days=1)
             dias_ieod = (fin_ieod - ini_ieod).days + 1 if fin_ieod >= ini_ieod else 0
-            # IEOD
+        
             for k in range(dias_ieod):
-                f = ini_ieod + timedelta(days=k); y2, m2, d2 = f.year, f.month, f.day; M2 = MES_TXT[m2-1]
+                f = ini_ieod + timedelta(days=k)
+                y2, m2, d2 = f.year, f.month, f.day
+                M2 = MES_TXT[m2-1]
                 try:
                     fb = _lee_ieod_bytes(y2, m2, M2, d2)
-                    # usar extractor anterior de pasada/regulación
+        
                     def _find_cols(df):
-                        def _n(s): import re; return re.sub(r"\s+"," ",str(s).strip()).upper()
-                        c_pas=c_reg=None
+                        def _n(s):
+                            import re
+                            return re.sub(r"\s+"," ",str(s).strip()).upper()
+                        c_pas = c_reg = None
                         for c in df.columns:
-                            k=_n(c)
-                            if k=="H. PASADA" and c_pas is None: c_pas=c
-                            if k=="H. REGULACION" and c_reg is None: c_reg=c
+                            k = _n(c)
+                            if k == "H. PASADA" and c_pas is None:
+                                c_pas = c
+                            if k == "H. REGULACION" and c_reg is None:
+                                c_reg = c
                         return c_pas, c_reg
+        
                     df = pd.read_excel(fb, sheet_name="TIPO_RECURSO", header=5, engine="openpyxl")
                     c_pas, c_reg = _find_cols(df)
                     if c_pas and c_reg:
                         sub = df.iloc[0:48, :]
                         pas = pd.to_numeric(sub[c_pas], errors="coerce").fillna(0.0).astype(float).tolist()
                         reg = pd.to_numeric(sub[c_reg], errors="coerce").fillna(0.0).astype(float).tolist()
-                        vals = [pas[i]+reg[i] for i in range(48)]
+                        vals = [pas[i] + reg[i] for i in range(48)]
                         series_7[f.strftime("%Y-%m-%d")] = vals
                 except Exception:
                     continue
-            # RDO-A último día
-            f_last = fin; yk, mk, dk = f_last.year, f_last.strftime("%m"), f_last.strftime("%d"); M_TXT = MES_TXT[f_last.month-1]
-            carpeta = work_dir / f"RDO_A_{yk}{mk}{dk}"; resultados = carpeta / f"YUPANA_{dk}{mk}A" / "RESULTADOS"
+        
+            # RDO-A último día (fin)
+            f_last = fin
+            yk, mk, dk = f_last.year, f_last.strftime("%m"), f_last.strftime("%d")
+            M_TXT = MES_TXT[f_last.month-1]
+            carpeta = work_dir / f"RDO_A_{yk}{mk}{dk}"
+            resultados = carpeta / f"YUPANA_{dk}{mk}A" / "RESULTADOS"
             if not resultados.exists():
                 try:
-                    r = requests.get(base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra="A"), timeout=40); r.raise_for_status()
-                    with zipfile.ZipFile(io.BytesIO(r.content)) as zf: zf.extractall(path=carpeta)
-                except Exception: pass
+                    r = requests.get(base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra="A"), timeout=40)
+                    r.raise_for_status()
+                    with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+                        zf.extractall(path=carpeta)
+                except Exception:
+                    pass
+        
             th = rellenar_hasta_48(totales_hidro(cargar_dataframe(resultados, stem_hidro)))
-            tr = rellenar_hasta_48(totales_rer (cargar_dataframe(resultados, stem_rer), [x.upper() for x in barras_rer_up]))
-            if th and tr: series_7[f_last.strftime("%Y-%m-%d")] = suma_elementos(th, tr)
-    
+            tr = rellenar_hasta_48(totales_rer(cargar_dataframe(resultados, stem_rer), [x.upper() for x in barras_rer_up]))
+            if th and tr:
+                series_7[f_last.strftime("%Y-%m-%d")] = suma_elementos(th, tr)
+        
+            # Plot interactivo
             if series_7:
-                # Fusión líneas
-                fechas_orden=[]; cur=ini
-                while cur<=fin:
-                    lbl=cur.strftime("%Y-%m-%d")
-                    if lbl in series_7: fechas_orden.append(lbl)
-                    cur+=timedelta(days=1)
-                fig, ax = plt.subplots(figsize=(12,6)); x_idx=list(range(48)); y_all=[]
+                fechas_orden = []
+                cur = ini
+                while cur <= fin:
+                    lbl = cur.strftime("%Y-%m-%d")
+                    if lbl in series_7:
+                        fechas_orden.append(lbl)
+                    cur += timedelta(days=1)
+        
+                fig = go.Figure()
+                x_idx = list(range(48))
+                y_all = []
+        
                 for lbl in fechas_orden:
                     fobj = datetime.strptime(lbl, "%Y-%m-%d").date()
-                    estilo = '--' if fobj < fin else '-'
                     vals = series_7[lbl]
-                    ax.plot(x_idx, vals, marker="o", linewidth=2, linestyle=estilo, label=lbl)
                     y_all.extend(vals)
-                ax.set_xticks(ticks_pos); ax.set_xticklabels(ticks_lbl, rotation=90, ha="center", fontsize=8)
+        
+                    if fobj == fin:
+                        # Día actual → rojo, más grueso
+                        fig.add_trace(go.Scatter(
+                            x=x_idx,
+                            y=vals,
+                            mode='lines+markers',
+                            name=f"{lbl}",
+                            line=dict(color='red', width=4)
+                        ))
+                    else:
+                        estilo = 'dash' if fobj < fin else 'solid'
+                        fig.add_trace(go.Scatter(
+                            x=x_idx,
+                            y=vals,
+                            mode='lines+markers',
+                            name=lbl,
+                            line=dict(width=2, dash=estilo)
+                        ))
+        
                 if y_all:
-                    y_min = max(0, math.floor(min(y_all)) - 10); y_max = math.ceil(max(y_all)) + 10
-                    ax.set_ylim(y_min, y_max)
-                ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-                ax.grid(axis="y", linestyle="--", alpha=0.5)
-                ax.set_title("HISTÓRICO HIDRO"); ax.set_ylabel("MW")
-                ax.legend(title="Fecha"); plt.tight_layout(); hidro_figs2.append(fig)
+                    y_min = max(0, math.floor(min(y_all)) - 10)
+                    y_max = math.ceil(max(y_all)) + 10
+                    fig.update_yaxes(range=[y_min, y_max])
+        
+                fig.update_layout(
+                    # xaxis_title="Hora",
+                    yaxis_title="MW",
+                    xaxis=dict(
+                        tickmode='array',
+                        tickvals=ticks_pos,
+                        ticktext=ticks_lbl,
+                        tickangle=0
+                    ),
+                    hovermode="x unified",
+                    margin=dict(t=40, b=40, l=60, r=20)
+                )
+        
+                st.plotly_chart(fig, use_container_width=True)
         except Exception:
             pass
-        
-        # Mostrar todas las HIDRO en UNA FILA
-        if hidro_figs2:
-            cols = st.columns(len(hidro_figs2))
-            for i, fig in enumerate(hidro_figs2):
-                with cols[i]: 
-                    st.pyplot(fig)
-                plt.close(fig)
         
         # =========================================================
         # ================== HISTORICO DEMANDA ====================
         # =========================================================
         st.markdown("### DEMANDA")
         demanda_figs2 = []
+        
         try:
-            # HISTÓRICO IEOD
+            # ------------ HISTÓRICO IEOD ------------
             series_ieod_dem = {}
             cur = ini
             while cur <= fin:
                 try:
                     fb = _lee_ieod_bytes(cur.year, cur.month, MES_TXT[cur.month-1], cur.day)
                     vals = _extrae_demanda_48(fb)
-                    if vals and any(v != 0 for v in vals): series_ieod_dem[cur.strftime("%Y-%m-%d")] = vals[:48]
+                    if vals and any(v != 0 for v in vals):
+                        series_ieod_dem[cur.strftime("%Y-%m-%d")] = vals[:48]
                 except Exception:
                     pass
                 cur += timedelta(days=1)
-            #if series_ieod_dem:
-                #fig, ax = plt.subplots(figsize=(12, 6)); xs=list(range(48))
-                #for lbl in sorted(series_ieod_dem.keys()):
-                    #v = [0 if (vi is None or (isinstance(vi,float) and math.isnan(vi))) else vi for vi in series_ieod_dem[lbl][:48]]
-                    #ax.plot(xs, v, marker="o", linewidth=2, label=lbl)
-                #ax.set_xticks(ticks_pos); ax.set_xticklabels(ticks_lbl, rotation=90, ha="right", fontsize=8)
-                #ax.set_title("HISTÓRICO DEMANDA DE IEOD"); ax.set_xlabel("Hora"); ax.set_ylabel("MW")
-                #ax.grid(axis="y", linestyle="--", alpha=0.4); ax.legend(title="Fecha")
-                #plt.tight_layout(); demanda_figs2.append(fig)
-            
-            # HISTÓRICO RPO A
+        
+            # ------------ HISTÓRICO RPO A ------------
             series_dia = {}
             for k in range((fin - ini).days + 1):
                 f = ini + timedelta(days=k)
-                yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d"); M_TXT = MES_TXT[f.month-1]
+                yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d")
+                M_TXT = MES_TXT[f.month-1]
                 url_zip = base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra="A")
                 carpeta = work_dir / f"RDO_A_{yk}{mk}{dk}"
                 resultados = carpeta / f"YUPANA_{dk}{mk}A" / "RESULTADOS"
+        
                 if not resultados.exists():
                     try:
-                        r = requests.get(url_zip, timeout=40); r.raise_for_status()
-                        with zipfile.ZipFile(io.BytesIO(r.content)) as zf: zf.extractall(path=carpeta)
+                        r = requests.get(url_zip, timeout=40)
+                        r.raise_for_status()
+                        with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+                            zf.extractall(path=carpeta)
                     except Exception:
                         continue
+        
                 vals_h = rellenar_hasta_48(fila_sin_primer_valor(cargar_dataframe(resultados, archivos_dem["HIDRO"])))
                 vals_t = rellenar_hasta_48(fila_sin_primer_valor(cargar_dataframe(resultados, archivos_dem["TERMICA"])))
                 vals_r = rellenar_hasta_48(fila_sin_primer_valor(cargar_dataframe(resultados, archivos_dem["RER"])))
+        
                 if any((vals_h, vals_t, vals_r)):
                     series_dia[f.strftime("%Y-%m-%d")] = suma_elementos(vals_h, vals_t, vals_r)
-            #if series_dia:
-                #fig, ax = plt.subplots(figsize=(11, 5)); y_all=[]
-                #for fecha_lbl, valores in series_dia.items():
-                    #xlab, yv = recortar_ceros_inicio(valores, horas)
-                    #if not yv: continue
-                    #y_all.extend(yv); ax.plot(xlab, yv, marker="o", linewidth=2, label=fecha_lbl)
-                #if y_all:
-                    #ax.set_ylim(max(0, math.floor(min(y_all)) - 10), math.ceil(max(y_all)) + 10)
-                #ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-                #ax.grid(axis="y", linestyle="--", alpha=0.5)
-                #ax.set_xticks(ticks_pos); ax.set_xticklabels(ticks_lbl, rotation=90, ha="right", fontsize=8)
-                #ax.set_title("HISTÓRICO DEMANDA DE RPO A"); ax.set_xlabel("Hora"); ax.set_ylabel("MW")
-                #ax.legend(title="Fecha"); plt.tight_layout(); demanda_figs2.append(fig)
-    
-            # Fusión
-            series_dem_7={}
+        
+            # ------------ FUSIÓN IEOD + RPO A (último día) ------------
+            series_dem_7 = {}
             cur = ini
+        
+            # Añadir días IEOD (todos menos el último)
             while cur < fin:
                 lbl = cur.strftime("%Y-%m-%d")
                 if lbl in series_ieod_dem:
@@ -1625,50 +1649,91 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     try:
                         fb = _lee_ieod_bytes(cur.year, cur.month, MES_TXT[cur.month-1], cur.day)
                         vals = _extrae_demanda_48(fb)
-                        if vals: series_dem_7[lbl] = vals[:48]
+                        if vals:
+                            series_dem_7[lbl] = vals[:48]
                     except Exception:
                         pass
                 cur += timedelta(days=1)
+        
+            # Añadir último día RPO A
             lbl_fin = fin.strftime("%Y-%m-%d")
-            if lbl_fin in series_dia: series_dem_7[lbl_fin] = series_dia[lbl_fin][:48]
-    
+            if lbl_fin in series_dia:
+                series_dem_7[lbl_fin] = series_dia[lbl_fin][:48]
+        
+            # ------------ PLOTLY INTERACTIVO (FUSIÓN) ------------
             if series_dem_7:
-                fechas_orden=[]; cur=ini
-                while cur<=fin:
+        
+                # ordenar fechas
+                fechas_orden = []
+                cur = ini
+                while cur <= fin:
                     l = cur.strftime("%Y-%m-%d")
-                    if l in series_dem_7: fechas_orden.append(l)
+                    if l in series_dem_7:
+                        fechas_orden.append(l)
                     cur += timedelta(days=1)
-                fig, ax = plt.subplots(figsize=(12, 6)); xs=list(range(48)); y_all=[]
+        
+                fig = go.Figure()
+                xs = list(range(48))
+                y_all = []
+        
                 for l in fechas_orden:
                     fobj = datetime.strptime(l, "%Y-%m-%d").date()
-                    estilo = '--' if fobj < fin else '-'
-                    vals = [0 if (v is None or (isinstance(v,float) and math.isnan(v))) else v for v in series_dem_7[l][:48]]
+                    vals = [
+                        0 if (v is None or (isinstance(v, float) and math.isnan(v))) else v
+                        for v in series_dem_7[l][:48]
+                    ]
                     y_all.extend(vals)
-                    ax.plot(xs, vals, marker="o", linewidth=2, linestyle=estilo, label=l)
-                ax.set_xticks(ticks_pos); ax.set_xticklabels(ticks_lbl, rotation=90, ha="center", fontsize=8)
+        
+                    if fobj == fin:
+                        # Último día → rojo y grueso
+                        fig.add_trace(go.Scatter(
+                            x=xs,
+                            y=vals,
+                            mode='lines+markers',
+                            name=f"{l}",
+                            line=dict(color='red', width=4)
+                        ))
+                    else:
+                        estilo = 'dash' if fobj < fin else 'solid'
+                        fig.add_trace(go.Scatter(
+                            x=xs,
+                            y=vals,
+                            mode='lines+markers',
+                            name=l,
+                            line=dict(width=2, dash=estilo)
+                        ))
+        
+                # Rango dinámico de eje Y
                 if y_all:
-                    ax.set_ylim(max(0, math.floor(min(y_all)) - 10), math.ceil(max(y_all)) + 10)
-                ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-                ax.grid(axis="y", linestyle="--", alpha=0.5)
-                ax.set_title("HISTÓRICO DEMANDA"); ax.set_ylabel("MW")
-                ax.legend(title="Fecha"); plt.tight_layout(); demanda_figs2.append(fig)
+                    y_min = max(0, math.floor(min(y_all)) - 10)
+                    y_max = math.ceil(max(y_all)) + 10
+                    fig.update_yaxes(range=[y_min, y_max])
+        
+                fig.update_layout(
+                    # xaxis_title="Hora",
+                    yaxis_title="MW",
+                    xaxis=dict(
+                        tickmode='array',
+                        tickvals=ticks_pos,
+                        ticktext=ticks_lbl,
+                        tickangle=0
+                    ),
+                    hovermode="x unified",
+                    margin=dict(t=40, b=40, l=60, r=20)
+                )
+        
+                st.plotly_chart(fig, use_container_width=True)
+        
         except Exception:
             pass
-            
-        if demanda_figs2:
-            cols = st.columns(len(demanda_figs2))
-            for i, fig in enumerate(demanda_figs2):
-                with cols[i]: 
-                    st.pyplot(fig)
-                plt.close(fig)
         
         # =========================================================
-        # =================== HISTORICO EÓLICO ====================
+        # ==================== HISTORICO EÓLICO ====================
         # =========================================================
         st.markdown("### EÓLICA")
-        eolica_figs2 = []
+        
         try:
-            # HISTÓRICO IEOD
+            # ------------ HISTÓRICO IEOD ------------
             def _extrae_eolica_48(fbytes):
                 df = pd.read_excel(fbytes, sheet_name="TIPO_RECURSO", header=5, engine="openpyxl")
                 col_eolica = None
@@ -1676,11 +1741,13 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     if isinstance(c, str):
                         c_norm = _sin_acentos(c).upper().strip()
                         if "EOLICA" in c_norm:
-                            col_eolica = c; break
-                if not col_eolica: return None
+                            col_eolica = c
+                            break
+                if not col_eolica:
+                    return None
                 vals = pd.to_numeric(df[col_eolica].iloc[:48], errors="coerce").fillna(0.0).astype(float).tolist()
                 return (vals + [0.0]*48)[:48]
-    
+        
             series_ieod_eol = {}
             cur = ini
             while cur <= fin:
@@ -1692,49 +1759,34 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 except Exception:
                     pass
                 cur += timedelta(days=1)
-            #if series_ieod_eol:
-                #fig, ax = plt.subplots(figsize=(12, 6)); xs=list(range(48))
-                #for lbl in sorted(series_ieod_eol.keys()):
-                    #v = [0 if (vi is None or (isinstance(vi,float) and math.isnan(vi))) else vi for vi in series_ieod_eol[lbl][:48]]
-                    #ax.plot(xs, v, marker="o", linewidth=2, label=lbl)
-                #ax.set_xticks(ticks_pos); ax.set_xticklabels(ticks_lbl, rotation=90, ha="right", fontsize=8)
-                #ax.set_title("HISTÓRICO EÓLICO DE IEOD"); ax.set_xlabel("Hora"); ax.set_ylabel("MW")
-                #ax.grid(axis="y", linestyle="--", alpha=0.4); ax.legend(title="Fecha"); plt.tight_layout()
-                #eolica_figs2.append(fig)
-    
-            # HISTÓRICO RPO A
-            series_eol_dia={}
+        
+            # ------------ HISTÓRICO RPO A ------------
+            series_eol_dia = {}
             for k in range((fin - ini).days + 1):
                 f = ini + timedelta(days=k)
-                yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d"); M_TXT = MES_TXT[f.month-1]
+                yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d")
+                M_TXT = MES_TXT[f.month-1]
                 url_zip = base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra="A")
+        
                 carpeta = work_dir / f"RDO_A_{yk}{mk}{dk}"
                 resultados = carpeta / f"YUPANA_{dk}{mk}A" / "RESULTADOS"
+        
                 if not resultados.exists():
                     try:
-                        r = requests.get(url_zip, timeout=40); r.raise_for_status()
-                        with zipfile.ZipFile(io.BytesIO(r.content)) as zf: zf.extractall(path=carpeta)
-                    except Exception:
+                        r = requests.get(url_zip, timeout=40)
+                        r.raise_for_status()
+                        with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+                            zf.extractall(path=carpeta)
+                    except:
                         continue
+        
                 df_rer = cargar_dataframe(resultados, stem_rer)
                 tot_eol = rellenar_hasta_48(totales_rer(df_rer, [x.upper() for x in barras_eol]))
-                if tot_eol: series_eol_dia[f.strftime("%Y-%m-%d")] = tot_eol
-            #if series_eol_dia:
-                #fig, ax = plt.subplots(figsize=(11, 5)); y_all=[]
-                #for fecha_lbl, vals in series_eol_dia.items():
-                    #xlab, yv = recortar_ceros_inicio(vals, horas)
-                    #if not yv: continue
-                    #y_all.extend(yv); ax.plot(xlab, yv, marker="o", linewidth=2, label=fecha_lbl)
-                #if y_all:
-                    #ax.set_ylim(max(0, math.floor(min(y_all)) - 10), math.ceil(max(y_all)) + 10)
-                #ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-                #ax.grid(axis="y", linestyle="--", alpha=0.5)
-                #ax.set_xticks(ticks_pos); ax.set_xticklabels(ticks_lbl, rotation=90, ha="right", fontsize=8)
-                #ax.set_title("HISTÓRICO EÓLICO DE RPO A"); ax.set_xlabel("Hora"); ax.set_ylabel("MW")
-                #ax.legend(title="Fecha"); plt.tight_layout(); eolica_figs2.append(fig)
-    
-            # Fusión 
-            series_eol_7={}
+                if tot_eol:
+                    series_eol_dia[f.strftime("%Y-%m-%d")] = tot_eol
+        
+            # ------------ FUSIÓN IEOD + RPO A (último día) ------------
+            series_eol_7 = {}
             cur = ini
             while cur < fin:
                 lbl = cur.strftime("%Y-%m-%d")
@@ -1744,59 +1796,104 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     try:
                         fb = _lee_ieod_bytes(cur.year, cur.month, MES_TXT[cur.month-1], cur.day)
                         vals = _extrae_eolica_48(fb)
-                        if vals: series_eol_7[lbl] = vals[:48]
-                    except Exception:
+                        if vals:
+                            series_eol_7[lbl] = vals[:48]
+                    except:
                         pass
                 cur += timedelta(days=1)
-            lbl_fin = fin.strftime("%Y-%m-%d")
-            if lbl_fin in series_eol_dia: series_eol_7[lbl_fin] = series_eol_dia[lbl_fin][:48]
-            if series_eol_7:
-                fechas_orden=[]; cur=ini
-                while cur<=fin:
-                    l = cur.strftime("%Y-%m-%d")
-                    if l in series_eol_7: fechas_orden.append(l)
-                    cur += timedelta(days=1)
-                fig, ax = plt.subplots(figsize=(12, 6)); xs=list(range(48)); y_all=[]
-                for l in fechas_orden:
-                    fobj = datetime.strptime(l, "%Y-%m-%d").date()
-                    estilo = '--' if fobj < fin else '-'
-                    vals = [0 if (v is None or (isinstance(v,float) and math.isnan(v))) else v for v in series_eol_7[l][:48]]
-                    y_all.extend(vals); ax.plot(xs, vals, marker="o", linewidth=2, linestyle=estilo, label=l)
-                ax.set_xticks(ticks_pos); ax.set_xticklabels(ticks_lbl, rotation=90, ha="center", fontsize=8)
-                if y_all:
-                    ax.set_ylim(max(0, math.floor(min(y_all)) - 10), math.ceil(max(y_all)) + 10)
-                ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-                ax.grid(axis="y", linestyle="--", alpha=0.5)
-                ax.set_title("HISTÓRICO EÓLICO"); ax.set_ylabel("MW")
-                ax.legend(title="Fecha"); plt.tight_layout(); eolica_figs2.append(fig)
-        except Exception:
-            pass
-    
-        if eolica_figs2:
-            cols = st.columns(len(eolica_figs2))
-            for i, fig in enumerate(eolica_figs2):
-                with cols[i]: 
-                    st.pyplot(fig)
-                plt.close(fig)
         
+            lbl_fin = fin.strftime("%Y-%m-%d")
+            if lbl_fin in series_eol_dia:
+                series_eol_7[lbl_fin] = series_eol_dia[lbl_fin][:48]
+        
+            # ------------ PLOTLY INTERACTIVO (FUSIÓN EÓLICA) ------------
+            if series_eol_7:
+        
+                # Ordenar fechas
+                fechas_orden = []
+                cur = ini
+                while cur <= fin:
+                    lbl = cur.strftime("%Y-%m-%d")
+                    if lbl in series_eol_7:
+                        fechas_orden.append(lbl)
+                    cur += timedelta(days=1)
+        
+                fig = go.Figure()
+                xs = list(range(48))
+                y_all = []
+        
+                for lbl in fechas_orden:
+                    fobj = datetime.strptime(lbl, "%Y-%m-%d").date()
+                    vals = [
+                        0 if (v is None or (isinstance(v, float) and math.isnan(v))) else v
+                        for v in series_eol_7[lbl][:48]
+                    ]
+        
+                    y_all.extend(vals)
+        
+                    if fobj == fin:
+                        # Último día → rojo y grueso
+                        fig.add_trace(go.Scatter(
+                            x=xs,
+                            y=vals,
+                            mode='lines+markers',
+                            name=f"{lbl}",
+                            line=dict(color='red', width=4)
+                        ))
+                    else:
+                        estilo = 'dash' if fobj < fin else 'solid'
+                        fig.add_trace(go.Scatter(
+                            x=xs,
+                            y=vals,
+                            mode='lines+markers',
+                            name=lbl,
+                            line=dict(width=2, dash=estilo)
+                        ))
+                        
+                # Rango dinámico eje Y
+                if y_all:
+                    y_min = max(0, math.floor(min(y_all)) - 10)
+                    y_max = math.ceil(max(y_all)) + 10
+                    fig.update_yaxes(range=[y_min, y_max])
+        
+                fig.update_layout(
+                    # xaxis_title="Hora",
+                    yaxis_title="MW",
+                    xaxis=dict(
+                        tickmode='array',
+                        tickvals=ticks_pos,
+                        ticktext=ticks_lbl,
+                        tickangle=0
+                    ),
+                    hovermode="x unified",
+                    margin=dict(t=40, b=40, l=60, r=20)
+                )
+        
+                st.plotly_chart(fig, use_container_width=True)
+        
+        except Exception as e:
+            st.warning(f"Error en histórico eólico: {e}")
+            
         # =========================================================
         # ==================== HISTORICO SOLAR ====================
         # =========================================================
         st.markdown("### SOLAR")
-        solar_figs2 = []
+        
         try:
-            # HISTÓRICO IEOD
+            # ------------ HISTÓRICO IEOD ------------
             def _extrae_solar_48_s(fbytes):
                 df = pd.read_excel(fbytes, sheet_name="TIPO_RECURSO", header=5, engine="openpyxl")
                 col_solar = None
                 for c in df.columns:
                     if isinstance(c, str) and "SOLAR" in c.upper():
-                        col_solar = c; break
-                if not col_solar: return None
+                        col_solar = c
+                        break
+                if not col_solar:
+                    return None
                 vals = pd.to_numeric(df[col_solar].iloc[:48], errors="coerce").fillna(0.0).astype(float).tolist()
                 return (vals + [0.0]*48)[:48]
-    
-            series_ieod_solar={}
+        
+            series_ieod_solar = {}
             cur = ini
             while cur <= fin:
                 try:
@@ -1807,57 +1904,34 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 except Exception:
                     pass
                 cur += timedelta(days=1)
-            #if series_ieod_solar:
-                #fig, ax = plt.subplots(figsize=(12, 6)); xs=list(range(48))
-                #for lbl in sorted(series_ieod_solar.keys()):
-                    #v = [0 if (vi is None or (isinstance(vi,float) and math.isnan(vi))) else vi for vi in series_ieod_solar[lbl][:48]]
-                    #ax.plot(xs, v, marker="o", linewidth=2, label=lbl)
-                #ax.set_xticks(ticks_pos); ax.set_xticklabels(ticks_lbl, rotation=90, ha="right", fontsize=8)
-                #ax.set_title("HISTÓRICO SOLAR DE IEOD"); ax.set_xlabel("Hora"); ax.set_ylabel("MW")
-                #ax.grid(axis="y", linestyle="--", alpha=0.4); ax.legend(title="Fecha"); plt.tight_layout()
-                #solar_figs2.append(fig)
-    
-            # HISTÓRICO RPO A
-            series_sol_dia={}
+        
+            # ------------ HISTÓRICO RPO A ------------
+            series_sol_dia = {}
             for k in range((fin - ini).days + 1):
                 f = ini + timedelta(days=k)
-                yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d"); M_TXT = MES_TXT[f.month-1]
+                yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d")
+                M_TXT = MES_TXT[f.month-1]
                 url_zip = base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra="A")
+        
                 carpeta = work_dir / f"RDO_A_{yk}{mk}{dk}"
                 resultados = carpeta / f"YUPANA_{dk}{mk}A" / "RESULTADOS"
+        
                 if not resultados.exists():
                     try:
-                        r = requests.get(url_zip, timeout=40); r.raise_for_status()
-                        with zipfile.ZipFile(io.BytesIO(r.content)) as zf: zf.extractall(path=carpeta)
+                        r = requests.get(url_zip, timeout=40)
+                        r.raise_for_status()
+                        with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+                            zf.extractall(path=carpeta)
                     except Exception:
                         continue
+        
                 df_sol = cargar_dataframe(resultados, stem_rer)
                 vals   = rellenar_hasta_48(totales_rer(df_sol, [x.upper() for x in barras_solar]))
                 if vals and any(v != 0 for v in vals):
                     series_sol_dia[f.strftime("%Y-%m-%d")] = vals
-            #if series_sol_dia:
-                #fig, ax = plt.subplots(figsize=(11, 5)); y_all=[]
-                #for fecha_lbl, raw_vals in series_sol_dia.items():
-                    #y_vals=[]
-                    #for i, v in enumerate(raw_vals[:48]):
-                        #v = 0 if pd.isna(v) else v
-                        #if v == 0 and not (0 <= i <= 11 or 36 <= i <= 47):
-                            #y_vals.append(None)
-                        #else:
-                            #y_vals.append(v)
-                    #if all(v is None for v in y_vals): continue
-                    #y_all.extend([v for v in y_vals if v is not None])
-                    #ax.plot(horas, y_vals, marker="o", linewidth=2, label=fecha_lbl)
-                #if y_all:
-                    #ax.set_ylim(max(0, math.floor(min(y_all)) - 10), math.ceil(max(y_all)) + 10)
-                #ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-                #ax.grid(axis="y", linestyle="--", alpha=0.5)
-                #ax.set_xticks(ticks_pos); ax.set_xticklabels(ticks_lbl, rotation=90, ha="right", fontsize=8)
-                #ax.set_title("HISTÓRICO SOLAR DE RPO A"); ax.set_xlabel("Hora"); ax.set_ylabel("MW")
-                #ax.legend(title="Fecha"); plt.tight_layout(); solar_figs2.append(fig)
-    
-            # Fusión + Promedio + Máximo
-            series_solar_7={}
+        
+            # ------------ FUSIÓN IEOD + RPO A (último día) ------------
+            series_solar_7 = {}
             cur = ini
             while cur < fin:
                 lbl = cur.strftime("%Y-%m-%d")
@@ -1867,40 +1941,96 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     try:
                         fb   = _lee_ieod_bytes(cur.year, cur.month, MES_TXT[cur.month-1], cur.day)
                         vals = _extrae_solar_48_s(fb)
-                        if vals: series_solar_7[lbl] = vals[:48]
+                        if vals:
+                            series_solar_7[lbl] = vals[:48]
                     except Exception:
                         pass
                 cur += timedelta(days=1)
+        
             lbl_fin = fin.strftime("%Y-%m-%d")
-            if lbl_fin in series_sol_dia: series_solar_7[lbl_fin] = series_sol_dia[lbl_fin][:48]
+            if lbl_fin in series_sol_dia:
+                series_solar_7[lbl_fin] = series_sol_dia[lbl_fin][:48]
+        
+            # ------------ PLOTLY INTERACTIVO (RESPETANDO LÓGICA DE CEROS) ------------
             if series_solar_7:
-                fechas_orden=[]; cur=ini
-                while cur<=fin:
+        
+                # ordenar fechas válidas
+                fechas_orden = []
+                cur = ini
+                while cur <= fin:
                     l = cur.strftime("%Y-%m-%d")
-                    if l in series_solar_7: fechas_orden.append(l)
+                    if l in series_solar_7:
+                        fechas_orden.append(l)
                     cur += timedelta(days=1)
-                fig, ax = plt.subplots(figsize=(12, 6)); xs=list(range(48)); y_all=[]
+        
+                fig = go.Figure()
+                xs = list(range(48))
+                y_all = []
+        
                 for l in fechas_orden:
                     fobj = datetime.strptime(l, "%Y-%m-%d").date()
-                    estilo = '--' if fobj < fin else '-'
-                    vals = [0 if (v is None or (isinstance(v,float) and math.isnan(v))) else v for v in series_solar_7[l][:48]]
-                    y_all.extend(vals); ax.plot(xs, vals, marker="o", linewidth=2, linestyle=estilo, label=l)
-                ax.set_xticks(ticks_pos); ax.set_xticklabels(ticks_lbl, rotation=90, ha="center", fontsize=8)
+                    raw_vals = series_solar_7[l][:48]
+                    y_vals = []
+        
+                    for i, v in enumerate(raw_vals):
+                        # limpieza básica
+                        if v is None or (isinstance(v, float) and math.isnan(v)):
+                            v0 = 0
+                        else:
+                            v0 = v
+        
+                        # MISMA LÓGICA QUE TU CÓDIGO ORIGINAL:
+                        # - 0 en madrugada/noche (0–11 y 36–47) se muestra como 0
+                        # - 0 en horas centrales -> None (no se dibuja línea)
+                        if v0 == 0 and not (0 <= i <= 11 or 36 <= i <= 47):
+                            y_vals.append(None)
+                        else:
+                            y_vals.append(v0)
+        
+                    y_all.extend([vv for vv in y_vals if vv is not None])
+        
+                    if fobj == fin:
+                        # Última fecha: línea destacada
+                        fig.add_trace(go.Scatter(
+                            x=xs,
+                            y=y_vals,
+                            mode='lines+markers',
+                            name=f"{l}",
+                            line=dict(color='red', width=4)
+                        ))
+                    else:
+                        estilo = 'dash' if fobj < fin else 'solid'
+                        fig.add_trace(go.Scatter(
+                            x=xs,
+                            y=y_vals,
+                            mode='lines+markers',
+                            name=l,
+                            line=dict(width=2, dash=estilo)
+                        ))
+        
+                # Rango eje Y dinámico
                 if y_all:
-                    ax.set_ylim(max(0, math.floor(min(y_all)) - 10), math.ceil(max(y_all)) + 10)
-                ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-                ax.grid(axis="y", linestyle="--", alpha=0.5)
-                ax.set_title("HISTÓRICO SOLAR"); ax.set_ylabel("MW")
-                ax.legend(title="Fecha"); plt.tight_layout(); solar_figs2.append(fig)
-        except Exception:
-            pass
-    
-        if solar_figs2:
-            cols = st.columns(len(solar_figs2))
-            for i, fig in enumerate(solar_figs2):
-                with cols[i]: 
-                    st.pyplot(fig)
-                plt.close(fig)
+                    y_min = max(0, math.floor(min(y_all)) - 10)
+                    y_max = math.ceil(max(y_all)) + 10
+                    fig.update_yaxes(range=[y_min, y_max])
+        
+                fig.update_layout(
+                    # xaxis_title="Hora",
+                    yaxis_title="MW",
+                    xaxis=dict(
+                        tickmode='array',
+                        tickvals=ticks_pos,
+                        ticktext=ticks_lbl,
+                        tickangle=0
+                    ),
+                    hovermode="x unified",
+                    margin=dict(t=40, b=40, l=60, r=20)
+                )
+        
+                st.plotly_chart(fig, use_container_width=True)
+        
+        except Exception as e:
+            st.warning(f"Error en histórico solar: {e}")
         
     with tab6:    
         # =========================================================
@@ -2597,17 +2727,163 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 with cols[i]: 
                     st.pyplot(fig)
                 plt.close(fig)
+        
+    with tab7:
+        # =========================================================
+        # ======================= TERMICAS ========================
+        # =========================================================
+        st.markdown("### TÉRMICAS")
+        
+        def generar_grafico_termico_plotly(titulo, grupos,
+                                   pdo_res, rdo_letras, work_dir,
+                                   fecha_str, ddmm,
+                                   stem_term="Termica - Despacho (MW)"):
 
+            series = {}
+        
+            # --- PDO ---
+            df_pdo = cargar_dataframe(pdo_res, stem_term)
+            vals = rellenar_hasta_48(totales_rer(df_pdo, grupos))
+            if vals:
+                series["PDO"] = vals
+        
+            # --- RDO A-E ---
+            for letra in rdo_letras:
+                rdo_path = (
+                    work_dir /
+                    f"RDO_{letra}_{fecha_str}" /
+                    f"YUPANA_{ddmm}{letra}" /
+                    "RESULTADOS"
+                )
+                df_rdo = cargar_dataframe(rdo_path, stem_term)
+                vals = rellenar_hasta_48(totales_rer(df_rdo, grupos))
+                if vals:
+                    series[f"RDO {letra}"] = vals
+        
+            if not series:
+                st.warning(f"No hay datos para {titulo}")
+                return
+        
+            # --------- Gráfico Plotly ---------
+            fig = go.Figure()
+            xs = list(range(48))
+            y_all = []
+        
+            for name, values in series.items():
+                y = []
+        
+                # --- convertir 0 → None (para cortar la línea) ---
+                for v in values:
+                    if v is None or (isinstance(v, float) and math.isnan(v)):
+                        y.append(None)
+                    elif v == 0:
+                        y.append(None)     # NO dibujar ceros
+                    else:
+                        y.append(v)
+        
+                # si toda la curva es None, no la graficamos
+                if all(v is None for v in y):
+                    continue
+        
+                y_all.extend([v for v in y if v is not None])
+        
+                fig.add_trace(go.Scatter(
+                    x=xs,
+                    y=y,
+                    mode='lines+markers',
+                    name=name,
+                    line=dict(width=2)
+                ))
+        
+            if not y_all:
+                st.warning(f"{titulo}: todos los valores fueron cero")
+                return
+            
+            y_min = max(0, math.floor(min(y_all)) - 10)
+            y_max = math.ceil(max(y_all)) + 10
+            fig.update_yaxes(range=[y_min, y_max])
+        
+            fig.update_layout(
+                title_text=titulo,
+                # xaxis_title="Hora",
+                yaxis_title="MW",
+                xaxis=dict(
+                    tickmode='array',
+                    tickvals=ticks_pos,
+                    ticktext=ticks_lbl,
+                    tickangle=0
+                ),
+                hovermode="x unified",
+            )
+        
+            st.plotly_chart(fig, use_container_width=True)
+            
+        # ===============================
+        #   LISTA DE GRÁFICOS TÉRMICOS
+        # ===============================
+        graficos_termicos = [
+            ("CHILCA 1 (Enersur/Engie)", [
+                "CHILCA1TG1GAS","CHILCA1TG2GAS","CHILCA1TG3GAS",
+                "CHILCA1CC1GAS","CHILCA1CC2GAS","CHILCA1CC3GAS",
+                "CHILCA1CC12GAS","CHILCA1CC23GAS",
+                "CHILCA1CC13GAS","CHILCA1CC123GAS",
+                "CHILCA1CC13GAS", "CHILCA1CC123GAS"
+            ]),
+            ("CHILCA 2 (Enersur/Engie)", [
+                "CHILCA2 CCOMB TG41 GAS","CHILCA2 CCOMB TG41  GAS",
+                "CHILCA2 TG41  GAS"
+            ]),
+            ("KALLPA (KALLPA GENERACIÓN)", [
+                "KALLPATG1GAS","KALLPATG2GAS","KALLPATG3GAS",
+                "KALLPACC1GAS","KALLPACC2GAS","KALLPACC3GAS",
+                "KALLPACC12GAS","KALLPACC23GAS","KALLPACC13GAS","KALLPACC123GAS"
+            ]),
+            ("FENIX (Fenix Power Perú)", [
+                "FENIXGT12GAS","FENIXCCGT12GAS",
+                "FENIXGT11GAS","FENIXCCGT11GAS",
+                "FENIXCCGT11GT12GAS"
+            ]),
+            ("VENTANILLA (Orazul / Enel)", [
+                "VENT3GAS","VENT4GAS",
+                "VENTCC3GAS","VENTCC4GAS","VENTCC34GAS",
+                "VENTCC3GASFD","VENTCC4GASFD","VENTCC34GASFD"
+            ]),
+            ("OLLEROS (Orazul Energy)", [
+                "OLLEROSTG1GAS","OLLEROS CCOMB TG1  GAS",
+                "OLLEROS CCOMB TG1 GAS"
+            ]),
+            ("LAS FLORES (ENGIE)", [
+                "LFLORESTG1GAS","LFLORES CCOMB TG1  GAS"
+            ]),
+            ("INDEPENDENCIA (Termochilca)", ["INDEPGAS"]),
+            # ("UTI 5", ["STA ROSA UTI 5  D2","STA ROSA UTI 5  GAS"]),
+            # ("UTI 6", ["STA ROSA UTI 6  GAS","STA ROSA UTI 6  D2"]),
+            ("STA ROSA (Enel)", [
+                "STA ROSA WEST TG7  GAS CON H2O",
+                "STA ROSA WEST TG7  GAS",
+                "STAROSA TG8 GAS",
+                "STA ROSA UTI 6  GAS","STA ROSA UTI 5  GAS"
+            ]),
+            ("MALACAS", ["MAL1TG6GAS","MALACAS3 TG 5  GAS"])
+        ]
+        
+        # Ejecutar gráficos térmicos
+        for titulo, grupos in graficos_termicos:
+            generar_grafico_termico_plotly(
+            titulo, grupos,
+            pdo_res, rdo_letras, work_dir,
+            fecha_str, ddmm
+        )
+        
 # -----------------------------------------------------------------------------
 # ------------------------------------ PDF ------------------------------------
 # -----------------------------------------------------------------------------        
 def render_graficos_a_pdf(ini: date, fin: date, barras: list[str], rdo_letras: list[str], work_dir: Path, pdf: PdfPages):
     return    
-
 st.set_page_config(page_title="Reporte Programa Diario de Operación", layout="wide")
 st.sidebar.header("Parámetros")
-fecha_sel = st.sidebar.date_input("Fecha del reporte", value=date.today(), format="DD/MM/YYYY")
-ini = st.sidebar.date_input("Inicio del rango", value=fecha_sel, format="DD/MM/YYYY")
+ini = st.sidebar.date_input("Inicio del rango", value=date.today(), format="DD/MM/YYYY")
+fecha_sel = st.sidebar.date_input("Fecha del reporte", value=ini, format="DD/MM/YYYY")
 barras = BARRAS_DEF
 rdo_letras = RDO_LETRAS_DEF
 fin = fecha_sel
