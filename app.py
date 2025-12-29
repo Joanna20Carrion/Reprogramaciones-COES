@@ -510,7 +510,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
     pdo_res = work_dir / f"PDO_{fecha_str}" / f"YUPANA_{fecha_str}" / "RESULTADOS"
     
     # ==== Pestañas ====
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["Demanda", "Motivos, Costo Total e Índices", "Hidro, Eólico y Solar", "CMG" , "Histórico del IEOD","Histórico de Potencia y Energía", "Térmicas"])
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["Demanda", "Motivos, Costo Total e Índices", "Recurso y Error", "CMG" , "Histórico del IEOD","Histórico de Potencia y Energía", "Térmicas"])
     
     with tab1:
         # =========================================================
@@ -1228,8 +1228,9 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             stem_rer = "Rer y No COES - Despacho (MW)"
             barras_solar = [
                 "MAJES","REPARTICION","TACNASOLAR","PANAMERICANASOLAR","MOQUEGUASOLAR",
-                "CS RUBI","INTIPAMPA","CSF YARUCAYA","CSCLEMESI","CS CARHUAQUERO",
-                "CS MATARANI","CS SAN MARTIN","CS SUNNY"
+                "CS RUBI","INTIPAMPA","CS INTIPAMPA EXPANSION","CS YARUCAYA","CSF YARUCAYA",
+                "CSCLEMESI","CS CARHUAQUERO","CS EL CARMEN","CS MATARANI",
+                "CS SAN MARTIN","CSSUNNY"
             ]
             # Actual
             series_sol = {}
@@ -1365,7 +1366,212 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 with cols[i]:
                     st.pyplot(fig)
                 plt.close(fig)
-    
+        
+        # =========================================================
+        # ================== TERMICA Y ERROR ======================
+        # =========================================================
+        st.markdown("### TÉRMICA")
+        termicas_figs = []
+        
+        try:
+            stem_term = "Termica - Despacho (MW)"
+            
+            series_t = {}
+            
+            grupos_gas = [
+                "KALLPATG1GAS","KALLPATG2GAS","KALLPATG3GAS",
+                "KALLPACC1GAS","KALLPACC2GAS","KALLPACC3GAS",
+                "KALLPACC12GAS","KALLPACC23GAS","KALLPACC13GAS","KALLPACC123GAS",
+                "CHILCA1TG1GAS","CHILCA1TG2GAS","CHILCA1TG3GAS",
+                "CHILCA1CC1GAS","CHILCA1CC2GAS","CHILCA1CC3GAS",
+                "CHILCA1CC12GAS","CHILCA1CC23GAS","CHILCA1CC13GAS","CHILCA1CC123GAS",
+                "AGETG1GAS","AGETG2GAS",
+                "MAL2TGN4GAS","MAL3TG5D2",
+                "VENT3D2","VENT4D2",
+                "VENT3GAS","VENT4GAS",
+                "VENTCC3GAS","VENTCC4GAS","VENTCC34GAS",
+                "VENTCC3GASFD","VENTCC4GASFD","VENTCC34GASFD",
+                "RFILO2TG1D2","RFILO2TG2D2","RFILO2TG3D2",
+                "INDEPGAS",
+                "OLLEROSTG1GAS",
+                "LFLORESTG1GAS",
+                "SNTV1R500","SNTV2R500","SNTV3R500",
+                "SHCUMMINS",
+                "CHILSLZ12R500D2",
+                "MOLL123D2",
+                "FENIXGT12GAS","FENIXCCGT12GAS",
+                "FENIXGT11GAS","FENIXCCGT11GAS",
+                "FENIXCCGT11GT12GAS",
+                "RECKA TG1  D2",
+                "PTOBRVO TG3  D2","PTOBRVO TG1  D2","PTOBRVO TG4  D2","PTOBRVO TG2  D2",
+                "FENIXCCGT11GT12D2",
+                "CTNEPITG43D2","CTNEPITG42D2","CTNEPITG41D2",
+                "RF ETEN TG1  D2","RF ETEN TG2  D2",
+                "RF PTO MALDONADO  D2","RF PUCALLPA  D2",
+                "CHILCA2 CCOMB TG41  GAS","CHILCA2 TG41  GAS",
+                "CHILINA TG  D2",
+                "STA ROSA UTI 6  GAS","STA ROSA UTI 5  D2",
+                "STA ROSA WEST TG7  D2 CON H2O",
+                "STA ROSA UTI 6  D2","STA ROSA UTI 5  GAS",
+                "STA ROSA WEST TG7  GAS CON H2O","STA ROSA WEST TG7  GAS",
+                "STA ROSA TG8 GAS",
+                "MALACAS3 TG 5  GAS",
+                "OLLEROS CCOMB TG1  GAS",
+                "FENIX GT12  D2","FENIX GT11  D2",
+                "FENIX CCOMB GT12  D2","FENIX CCOMB GT11  D2",
+                "LFLORES CCOMB TG1  GAS",
+                "TUMBES MAK 1  D2","TUMBES MAK 2  D2",
+                "REFTALARA TV1TV2FXRFG",
+                "MAL1TG6D2","MAL1TG6GAS"
+            ]
+            
+            # ----- PDO -----
+            df_pdo_t = cargar_dataframe(pdo_res, stem_term)
+            tot_term_pdo = rellenar_hasta_48(totales_rer(df_pdo_t, grupos_gas))
+            if tot_term_pdo:
+                series_t["PDO"] = tot_term_pdo
+        
+            # ----- RDO A–E -----
+            for letra in rdo_letras:
+                rdo_res = (
+                    work_dir / f"RDO_{letra}_{fecha_str}" /
+                    f"YUPANA_{ddmm}{letra}" / "RESULTADOS"
+                )
+                df_rdo_t = cargar_dataframe(rdo_res, stem_term)
+                tot_term_rdo = rellenar_hasta_48(totales_rer(df_rdo_t, grupos_gas))
+                if tot_term_rdo:
+                    series_t[f"RDO {letra}"] = tot_term_rdo
+                    
+            if series_t:
+                fig, ax = plt.subplots(figsize=(11, 5))
+                yvals_t = []
+        
+                for nombre, valores in series_t.items():
+                    xlab, yv = recortar_ceros_inicio(valores, horas)
+                    if not yv:
+                        continue
+        
+                    start = len(horas) - len(yv)
+                    xnum = np.arange(start, start + len(yv))
+        
+                    yvals_t.extend(yv)
+                    ax.plot(xnum, yv, marker="o", linewidth=2, label=nombre)
+        
+                aplicar_formato_xy(
+                    ax, L=len(horas), ticks_pos=ticks_pos, horas=horas,
+                    y_values=yvals_t, ypad=0.05, xpad=0.5
+                )
+        
+                ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+                ax.grid(axis="y", linestyle="--", alpha=0.5)
+                ax.set_title("TÉRMICA")
+                ax.set_ylabel("MW")
+                ax.legend()
+                plt.tight_layout()
+                termicas_figs.append(fig)
+        
+        except Exception:
+            pass
+        
+        # =========================================================
+        # ================== ERROR TÉRMICAS =======================
+        # =========================================================
+        try:
+            if series_t:
+        
+                orden_series = [
+                    k for k in (["PDO"] + [f"RDO {l}" for l in rdo_letras])
+                    if k in series_t
+                ]
+        
+                pares = [
+                    (orden_series[i], orden_series[i+1])
+                    for i in range(len(orden_series)-1)
+                ]
+        
+                curvas = []
+                L_global = None
+        
+                # ----- Calcular error crudo -----
+                for (ante, act) in pares:
+                    va = series_t[ante]
+                    vb = series_t[act]
+        
+                    mL = min(len(va), len(vb), 48)
+                    if mL <= 0:
+                        continue
+        
+                    etiqueta = f"Error {ante} - {act}"
+                    vals = [_rel_err_abs_pct(va[i], vb[i]) for i in range(mL)]
+        
+                    y_clean = np.array([_omit_0_100(v) for v in vals], dtype=float)
+        
+                    if L_global is None:
+                        L_global = mL
+                    else:
+                        L_global = min(L_global, mL)
+        
+                    curvas.append({"label": etiqueta, "y_clean": y_clean})
+        
+                if curvas:
+                    L = L_global
+                    x = np.arange(L)
+        
+                    # ----- detectar primeros índices válidos -----
+                    for c in curvas:
+                        ysub = c["y_clean"][:L]
+                        idx = np.where(~np.isnan(ysub))[0]
+                        if len(idx) == 0:
+                            c["start_idx"] = None
+                        else:
+                            c["start_idx"] = int(idx[0])
+        
+                    # ----- apagar anteriores -----
+                    y_final = [c["y_clean"][:L].copy() for c in curvas]
+        
+                    for i in range(1, len(curvas)):
+                        s_new = curvas[i]["start_idx"]
+                        if s_new is not None:
+                            for j in range(i):
+                                y_final[j][s_new:] = np.nan
+        
+                    # ===== Gráfico error =====
+                    fig, ax = plt.subplots(figsize=(11, 5))
+                    yerr_all = []
+        
+                    for i, c in enumerate(curvas):
+                        serie_plot = y_final[i]
+                        yerr_all.extend(serie_plot[~np.isnan(serie_plot)])
+        
+                        ax.plot(
+                            x, serie_plot,
+                            marker='o', linewidth=2,
+                            label=c["label"]
+                        )
+        
+                    aplicar_formato_xy(
+                        ax, L=L, ticks_pos=ticks_pos, horas=horas,
+                        y_values=yerr_all, ypad=0.05, xpad=0.5
+                    )
+        
+                    ax.grid(axis="y", linestyle="--", alpha=0.5)
+                    ax.set_title("Error Porcentual de TÉRMICA")
+                    ax.set_ylabel("%")
+                    ax.legend()
+                    plt.tight_layout()
+                    termicas_figs.append(fig)
+        
+        except Exception:
+            pass
+        
+        # ===== Mostrar columnas =====
+        if termicas_figs:
+            cols = st.columns(len(termicas_figs))
+            for i, fig in enumerate(termicas_figs):
+                with cols[i]:
+                    st.pyplot(fig)
+                plt.close(fig)
+                
     with tab4:
         # =========================================================
         # ======================== CMG ============================
@@ -2031,6 +2237,188 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         
         except Exception as e:
             st.warning(f"Error en histórico solar: {e}")
+        
+        # =========================================================
+        # ================== HISTORICO TÉRMICA ====================  
+        # =========================================================
+        st.markdown("### TÉRMICA")
+        
+        # ---------- HISTÓRICO IEOD (TÉRMICA) ----------
+        try:
+            def _extrae_termica_48(fbytes):
+                df = pd.read_excel(
+                    fbytes,
+                    sheet_name="TIPO_RECURSO",
+                    header=5,
+                    engine="openpyxl"
+                )
+            
+                # Lista completa de columnas térmicas del IEOD
+                cols_termicas = [
+                    "GAS DE CAMISEA",
+                    "GAS DE AGUAYTIA",
+                    "DIÉSEL",
+                    "RESIDUAL",
+                    "NAFTA+GAS DE REFINERIA",
+                    "FLEXIGAS+GAS DE REFINERIA",
+                    "BAGAZO",
+                    "BIOGÁS"
+                ]
+            
+                total = [0.0] * 48
+            
+                for col in df.columns:
+                    col_norm = _sin_acentos(str(col)).upper().strip()
+            
+                    for tcol in cols_termicas:
+                        t_norm = _sin_acentos(tcol).upper().strip()
+                        if col_norm == t_norm:
+                            vals = (
+                                pd.to_numeric(df[col].iloc[:48], errors="coerce")
+                                .fillna(0.0)
+                                .astype(float)
+                                .tolist()
+                            )
+                            total = [total[i] + vals[i] for i in range(48)]
+            
+                return total
+            
+            series_ieod_term = {}
+            cur = ini
+            while cur <= fin:
+                try:
+                    fb = _lee_ieod_bytes(cur.year, cur.month, MES_TXT[cur.month-1], cur.day)
+                    vals = _extrae_termica_48(fb)
+                    if vals and any(v != 0 for v in vals):
+                        series_ieod_term[cur.strftime("%Y-%m-%d")] = vals[:48]
+                except Exception:
+                    pass
+                cur += timedelta(days=1)
+        
+        except Exception as e:
+            st.warning(f"IEOD histórico TÉRMICA no disponible: {e}")
+            
+        # ---------- HISTÓRICO RPO A (TÉRMICA) ----------
+        try:
+            series_term_dia = {}
+            stem_term = "Termica - Despacho (MW)"
+        
+            for k in range((fin - ini).days + 1):
+                f = ini + timedelta(days=k)
+                yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d")
+                M_TXT = MES_TXT[f.month-1]
+        
+                url_zip = base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra="A")
+                carpeta = work_dir / f"RDO_A_{yk}{mk}{dk}"
+                resultados = carpeta / f"YUPANA_{dk}{mk}A" / "RESULTADOS"
+        
+                if not resultados.exists():
+                    try:
+                        r = requests.get(url_zip, timeout=40)
+                        r.raise_for_status()
+                        with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+                            zf.extractall(path=carpeta)
+                    except Exception:
+                        continue
+        
+                df_term = cargar_dataframe(resultados, stem_term)
+                # suma sobre TODAS las térmicas
+                vals = rellenar_hasta_48(totales_rer(df_term, grupos_gas))
+                if vals and any(v != 0 for v in vals):
+                    series_term_dia[f.strftime("%Y-%m-%d")] = vals
+        
+        except Exception:
+            pass
+        
+        # ---------- FUSIÓN IEOD + RPO A (último día) ----------
+        try:
+            series_term_7 = {}
+        
+            # IEOD desde ini hasta fin-1
+            cur = ini
+            while cur < fin:
+                lbl = cur.strftime("%Y-%m-%d")
+                if lbl in series_ieod_term:
+                    series_term_7[lbl] = series_ieod_term[lbl][:48]
+                else:
+                    # fallback: reintentar lectura puntual
+                    try:
+                        fb = _lee_ieod_bytes(cur.year, cur.month, MES_TXT[cur.month-1], cur.day)
+                        vals = _extrae_termica_48(fb)
+                        if vals and any(v != 0 for v in vals):
+                            series_term_7[lbl] = vals[:48]
+                    except Exception:
+                        pass
+                cur += timedelta(days=1)
+        
+            # último día desde RPO A
+            lbl_fin = fin.strftime("%Y-%m-%d")
+            if lbl_fin in series_term_dia:
+                series_term_7[lbl_fin] = series_term_dia[lbl_fin][:48]
+        
+            # ---------- PLOTLY INTERACTIVO ----------
+            if series_term_7:
+                fechas_orden = []
+                cur = ini
+                while cur <= fin:
+                    l = cur.strftime("%Y-%m-%d")
+                    if l in series_term_7:
+                        fechas_orden.append(l)
+                    cur += timedelta(days=1)
+        
+                fig = go.Figure()
+                xs = list(range(48))
+                y_all = []
+        
+                for l in fechas_orden:
+                    fobj = datetime.strptime(l, "%Y-%m-%d").date()
+                    vals = [
+                        0 if (v is None or (isinstance(v, float) and math.isnan(v))) else v
+                        for v in series_term_7[l][:48]
+                    ]
+                    y_all.extend(vals)
+        
+                    if fobj == fin:
+                        # último día → rojo, más grueso
+                        fig.add_trace(go.Scatter(
+                            x=xs,
+                            y=vals,
+                            mode='lines+markers',
+                            name=l,
+                            line=dict(color='red', width=4)
+                        ))
+                    else:
+                        estilo = 'dash' if fobj < fin else 'solid'
+                        fig.add_trace(go.Scatter(
+                            x=xs,
+                            y=vals,
+                            mode='lines+markers',
+                            name=l,
+                            line=dict(width=2, dash=estilo)
+                        ))
+        
+                if y_all:
+                    y_min = max(0, math.floor(min(y_all)) - 10)
+                    y_max = math.ceil(max(y_all)) + 10
+                    fig.update_yaxes(range=[y_min, y_max])
+        
+                fig.update_layout( 
+                    # xaxis_title="Hora",
+                    yaxis_title="MW",
+                    xaxis=dict(
+                        tickmode='array',
+                        tickvals=ticks_pos,
+                        ticktext=ticks_lbl,
+                        tickangle=0
+                    ),
+                    hovermode="x unified",
+                    margin=dict(t=40, b=40, l=60, r=20)
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+                
+        except Exception:
+            pass
         
     with tab6:    
         # =========================================================
@@ -2728,9 +3116,220 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     st.pyplot(fig)
                 plt.close(fig)
         
+        # =========================================================
+        # ======================= TÉRMICA =========================
+        # =========================================================
+        st.markdown("### TÉRMICA")
+        termica_figs = []
+        
+        # -------- Función: extraer térmica IEOD (todas las fuentes) ---------
+        def _extrae_termica_48(fbytes):
+            df = pd.read_excel(
+                fbytes,
+                sheet_name="TIPO_RECURSO",
+                header=5,
+                engine="openpyxl"
+            )
+        
+            cols_termicas = [
+                "GAS DE CAMISEA",
+                "GAS DE AGUAYTIA",
+                "DIÉSEL",
+                "RESIDUAL",
+                "NAFTA+GAS DE REFINERIA",
+                "FLEXIGAS+GAS DE REFINERIA",
+                "BAGAZO",
+                "BIOGÁS"
+            ]
+        
+            total = [0.0] * 48
+        
+            for col in df.columns:
+                col_norm = _sin_acentos(str(col)).upper().strip()
+                for tcol in cols_termicas:
+                    t_norm = _sin_acentos(tcol).upper().strip()
+                    if col_norm == t_norm:
+                        vals = (
+                            pd.to_numeric(df[col].iloc[:48], errors="coerce")
+                            .fillna(0.0)
+                            .astype(float)
+                            .tolist()
+                        )
+                        total = [total[i] + vals[i] for i in range(48)]
+        
+            return total
+        
+        try:
+            # ---------- HISTÓRICO IEOD ----------
+            series_ieod_term = {}
+            cur = ini
+            while cur <= fin:
+                try:
+                    fb = _lee_ieod_bytes(cur.year, cur.month, MES_TXT[cur.month-1], cur.day)
+                    vals = _extrae_termica_48(fb)
+                    if vals and any(v != 0 for v in vals):
+                        series_ieod_term[cur.strftime("%Y-%m-%d")] = vals[:48]
+                except Exception:
+                    pass
+                cur += timedelta(days=1)
+                
+            # ---------- HISTÓRICO RPO A ----------
+            series_term_dia = {}
+            stem_term = "Termica - Despacho (MW)"
+        
+            for k in range((fin - ini).days + 1):
+                f = ini + timedelta(days=k)
+                yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d")
+                M_TXT = MES_TXT[f.month-1]
+        
+                url_zip = base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra="A")
+                carpeta = work_dir / f"RDO_A_{yk}{mk}{dk}"
+                resultados = carpeta / f"YUPANA_{dk}{mk}A" / "RESULTADOS"
+        
+                if not resultados.exists():
+                    try:
+                        r = requests.get(url_zip, timeout=40); r.raise_for_status()
+                        with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+                            zf.extractall(path=carpeta)
+                    except Exception:
+                        continue
+        
+                df_term = cargar_dataframe(resultados, stem_term)
+                vals = rellenar_hasta_48(totales_rer(df_term, grupos_gas))
+                if vals and any(v != 0 for v in vals):
+                    series_term_dia[f.strftime("%Y-%m-%d")] = vals
+                    
+            # ---------- FUSIÓN IEOD + RPO A ----------
+            series_term_7 = {}
+        
+            cur = ini
+            while cur < fin:
+                lbl = cur.strftime("%Y-%m-%d")
+                if lbl in series_ieod_term:
+                    series_term_7[lbl] = series_ieod_term[lbl][:48]
+                else:
+                    try:
+                        fb = _lee_ieod_bytes(cur.year, cur.month, MES_TXT[cur.month-1], cur.day)
+                        vals = _extrae_termica_48(fb)
+                        if vals and any(v != 0 for v in vals):
+                            series_term_7[lbl] = vals[:48]
+                    except Exception:
+                        pass
+                cur += timedelta(days=1)
+        
+            lbl_fin = fin.strftime("%Y-%m-%d")
+            if lbl_fin in series_term_dia:
+                series_term_7[lbl_fin] = series_term_dia[lbl_fin][:48]
+                
+            # ---------- GRÁFICO PRINCIPAL HISTÓRICO ----------
+            if series_term_7:
+                fechas_orden = []
+                cur = ini
+                while cur <= fin:
+                    l = cur.strftime("%Y-%m-%d")
+                    if l in series_term_7:
+                        fechas_orden.append(l)
+                    cur += timedelta(days=1)
+        
+                fig, ax = plt.subplots(figsize=(12, 6))
+                xs = list(range(48))
+                y_all = []
+        
+                for l in fechas_orden:
+                    fobj = datetime.strptime(l, "%Y-%m-%d").date()
+                    estilo = '--' if fobj < fin else '-'
+                    vals = [
+                        0 if (v is None or (isinstance(v,float) and math.isnan(v))) else v
+                        for v in series_term_7[l][:48]
+                    ]
+                    y_all.extend(vals)
+                    ax.plot(xs, vals, marker="o", linewidth=2, linestyle=estilo, label=l)
+        
+                #ax.set_xticks(ticks_pos)
+                #ax.set_xticklabels(ticks_lbl, rotation=90, ha="center", fontsize=8)
+                #if y_all:
+                #    ax.set_ylim(max(0, math.floor(min(y_all)) - 10), math.ceil(max(y_all)) + 10)
+                #ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+                #ax.grid(axis="y", linestyle="--", alpha=0.5)
+                #ax.set_title("HISTÓRICO TÉRMICA")
+                #ax.set_ylabel("MW")
+                #ax.legend(title="Fecha")
+                #plt.tight_layout()
+                #termica_figs.append(fig)
+                
+            # ---------- PROMEDIO DIARIO ----------
+            fechas_lbl=[]; promedios=[]
+            cur = ini
+            while cur <= fin:
+                l = cur.strftime("%Y-%m-%d")
+                if l in series_term_7:
+                    vals = [
+                        0.0 if (v is None or (isinstance(v,float) and math.isnan(v))) else float(v)
+                        for v in series_term_7[l][:48]
+                    ]
+                    promedios.append(sum(vals)/48.0)
+                    fechas_lbl.append(l)
+                cur += timedelta(days=1)
+        
+            if promedios:
+                fig, ax = plt.subplots(figsize=(9,5))
+                bars = ax.bar(fechas_lbl, promedios)
+                for rect, val in zip(bars, promedios):
+                    ax.text(rect.get_x()+rect.get_width()/2, rect.get_height(), f"{val:.0f}",
+                            ha="center", va="bottom", fontsize=9)
+                ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+                ax.set_ylabel("MW")
+                ax.set_title("HISTÓRICO TÉRMICA (Potencia Promedio Diario)")
+                ax.grid(axis="y", linestyle="--", alpha=0.4)
+                plt.tight_layout()
+                termica_figs.append(fig)
+                
+            # ---------- ENERGÍA DIARIA (MWh) ----------
+            fechas_lbl=[]; energias=[]
+            cur = ini
+            while cur <= fin:
+                l = cur.strftime("%Y-%m-%d")
+                if l in series_term_7:
+                    vals = [
+                        0.0 if (v is None or (isinstance(v,float) and math.isnan(v))) else float(v)
+                        for v in series_term_7[l][:48]
+                    ]
+                    energia = sum(vals)  # sumatoria de las 48 horas
+                    energias.append(energia)
+                    fechas_lbl.append(l)
+                cur += timedelta(days=1)
+                
+            if energias:
+                fig, ax = plt.subplots(figsize=(9,5))
+                bars = ax.bar(fechas_lbl, energias)
+                for rect, val in zip(bars, energias):
+                    ax.text(
+                        rect.get_x()+rect.get_width()/2,
+                        rect.get_height(),
+                        f"{val:.0f}",
+                        ha="center", va="bottom", fontsize=9
+                    )
+                ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+                ax.set_ylabel("MWh")
+                ax.set_title("HISTÓRICO TÉRMICA (Energía Diaria)")
+                ax.grid(axis="y", linestyle="--", alpha=0.4)
+                plt.tight_layout()
+                termica_figs.append(fig)
+        
+        except Exception:
+            pass
+        
+        # ----------- MOSTRAR EN PANTALLA -----------
+        if termica_figs:
+            cols = st.columns(len(termica_figs))
+            for i, fig in enumerate(termica_figs):
+                with cols[i]:
+                    st.pyplot(fig)
+                plt.close(fig)
+                
     with tab7:
         # =========================================================
-        # ======================= TERMICAS ========================
+        # ======================= TERMICAS ======================== 
         # =========================================================
         st.markdown("### TÉRMICAS")
         
@@ -2822,18 +3421,18 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         #   LISTA DE GRÁFICOS TÉRMICOS
         # ===============================
         graficos_termicos = [
-            ("CHILCA 1 (Enersur/Engie)", [
+            ("CHILCA 1 (Engie Energía Perú)", [
                 "CHILCA1TG1GAS","CHILCA1TG2GAS","CHILCA1TG3GAS",
                 "CHILCA1CC1GAS","CHILCA1CC2GAS","CHILCA1CC3GAS",
                 "CHILCA1CC12GAS","CHILCA1CC23GAS",
                 "CHILCA1CC13GAS","CHILCA1CC123GAS",
                 "CHILCA1CC13GAS", "CHILCA1CC123GAS"
             ]),
-            ("CHILCA 2 (Enersur/Engie)", [
+            ("CHILCA 2 (Engie Energía Perú)", [ 
                 "CHILCA2 CCOMB TG41 GAS","CHILCA2 CCOMB TG41  GAS",
                 "CHILCA2 TG41  GAS"
             ]),
-            ("KALLPA (KALLPA GENERACIÓN)", [
+            ("KALLPA (Kallpa Generación)", [ 
                 "KALLPATG1GAS","KALLPATG2GAS","KALLPATG3GAS",
                 "KALLPACC1GAS","KALLPACC2GAS","KALLPACC3GAS",
                 "KALLPACC12GAS","KALLPACC23GAS","KALLPACC13GAS","KALLPACC123GAS"
@@ -2843,22 +3442,22 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 "FENIXGT11GAS","FENIXCCGT11GAS",
                 "FENIXCCGT11GT12GAS"
             ]),
-            ("VENTANILLA (Orazul / Enel)", [
+            ("VENTANILLA (Orygen Perú)", [
                 "VENT3GAS","VENT4GAS",
                 "VENTCC3GAS","VENTCC4GAS","VENTCC34GAS",
                 "VENTCC3GASFD","VENTCC4GASFD","VENTCC34GASFD"
             ]),
-            ("OLLEROS (Orazul Energy)", [
+            ("OLLEROS (Termochilca)", [
                 "OLLEROSTG1GAS","OLLEROS CCOMB TG1  GAS",
                 "OLLEROS CCOMB TG1 GAS"
             ]),
-            ("LAS FLORES (ENGIE)", [
+            ("LAS FLORES (Kallpa Generación)", [
                 "LFLORESTG1GAS","LFLORES CCOMB TG1  GAS"
             ]),
-            ("INDEPENDENCIA (Termochilca)", ["INDEPGAS"]),
+            ("INDEPENDENCIA (Egesur)", ["INDEPGAS"]),
             # ("UTI 5", ["STA ROSA UTI 5  D2","STA ROSA UTI 5  GAS"]),
             # ("UTI 6", ["STA ROSA UTI 6  GAS","STA ROSA UTI 6  D2"]),
-            ("STA ROSA (Enel)", [
+            ("STA ROSA (Orygen Perú)", [
                 "STA ROSA WEST TG7  GAS CON H2O",
                 "STA ROSA WEST TG7  GAS",
                 "STAROSA TG8 GAS",
@@ -2892,21 +3491,23 @@ work_dir = Path(work_dir_str); work_dir.mkdir(parents=True, exist_ok=True)
 gen_generar = st.sidebar.button("Generar", type="primary")
 
 st.title("Reporte Programa Diario de Operación")
-y, m, d = fecha_sel.year, f"{fecha_sel.month:02d}", f"{fecha_sel.day:02d}"
-M = MES_TXT[int(m) - 1]
-
-ahora_pe = datetime.now(ZoneInfo("America/Lima"))
-fecha_hum = ahora_pe.strftime("%d/%m/%Y")
-now_str   = ahora_pe.strftime("%H:%M")
-fecha_str = f"{y}{m}{d}"
-ddmm = f"{d}{m}"
-
-st.subheader(f"Reporte del {fecha_hum}")
-st.caption(f"Actualizado a las {now_str} horas")
-
 btn_cols = st.columns([1, 8])
 
 if gen_generar:
+    
+    fecha_hum = fecha_sel.strftime("%d/%m/%Y")
+    
+    ahora_pe = datetime.now(ZoneInfo("America/Lima"))
+    now_str   = ahora_pe.strftime("%H:%M")
+    
+    y, m, d = fecha_sel.year, f"{fecha_sel.month:02d}", f"{fecha_sel.day:02d}"
+    M = MES_TXT[int(m) - 1]
+    fecha_str = f"{y}{m}{d}"
+    ddmm = f"{d}{m}"
+    
+    st.subheader(f"Reporte del {fecha_hum}")
+    st.caption(f"Actualizado a las {now_str} horas")
+    
     with st.spinner("Descargando MOTIVOS RDO…"):
         df_motivos_local = recolectar_motivos_dia(y=y, m=m, d=d, M=M, destino=work_dir, letras="".join(rdo_letras))
         st.session_state["df_motivos"] = df_motivos_local
