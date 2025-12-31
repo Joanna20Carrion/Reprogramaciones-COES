@@ -510,7 +510,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
     pdo_res = work_dir / f"PDO_{fecha_str}" / f"YUPANA_{fecha_str}" / "RESULTADOS"
     
     # ==== Pestañas ====
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["Demanda", "Motivos, Costo Total e Índices", "Recurso y Error", "CMG" , "Histórico del IEOD","Histórico de Potencia y Energía", "Térmicas"])
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(["Demanda", "Motivos, Costo Total e Índices", "Recurso y Error", "CMG" , "Histórico del IEOD","Histórico de Potencia y Energía", "Térmicas", "Curva de SEIN"])
     
     with tab1:
         # =========================================================
@@ -3473,6 +3473,72 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             pdo_res, rdo_letras, work_dir,
             fecha_str, ddmm
         )
+        
+    with tab8:
+        st.markdown("### Curva del SEIN")
+        
+        try:
+            def _to48(arr):
+                if arr is None:
+                    return np.zeros(48, dtype=float)
+                a = list(arr)[:48]
+                if len(a) < 48:
+                    a = a + [0] * (48 - len(a))
+                return np.array(
+                    [0 if (v is None or (isinstance(v, float) and np.isnan(v)) or pd.isna(v)) else float(v) for v in a],
+                    dtype=float
+                )
+    
+            # PDOs
+            pdo_hidro = _to48(series_h.get("PDO")    if "series_h"   in locals() and series_h   else None)
+            pdo_term  = _to48(series_t.get("PDO")    if "series_t"   in locals() and series_t   else None)
+            pdo_eol   = _to48(series_rer.get("PDO")  if "series_rer" in locals() and series_rer else None)
+            pdo_solar = _to48(series_sol.get("PDO")  if "series_sol" in locals() and series_sol else None)
+    
+            # Acumulados
+            y_h = pdo_hidro
+            y_t = y_h + pdo_term
+            y_e = y_t + pdo_eol
+            y_s = y_e + pdo_solar
+    
+            x = np.arange(len(horas))
+    
+            fig, ax = plt.subplots(figsize=(11, 5))
+    
+            # ==== ÁREAS COLOREADAS (sin bordes) ====
+            ax.fill_between(x, 0,   y_h, color="#1f77b4", alpha=0.5, label="HIDRO",
+                            edgecolor="none", linewidth=0)
+            ax.fill_between(x, y_h, y_t, color="#d62728", alpha=0.5, label="TÉRMICA",
+                            edgecolor="none", linewidth=0)
+            ax.fill_between(x, y_t, y_e, color="#2ca02c", alpha=0.5, label="EÓLICA",
+                            edgecolor="none", linewidth=0)
+            ax.fill_between(x, y_e, y_s, color="#ff7f0e", alpha=0.5, label="SOLAR",
+                            edgecolor="none", linewidth=0)
+    
+            # Escala correcta en Y
+            y_all = np.concatenate([y_h, y_t, y_e, y_s])
+            aplicar_formato_xy(
+                ax,
+                L=len(horas),
+                ticks_pos=ticks_pos,
+                horas=horas,
+                y_values=y_all,
+                ypad=0.08,
+                xpad=0.5
+            )
+            
+            ax.set_ylim(bottom=0)
+            ax.grid(axis="y", linestyle="--", alpha=0.5)
+            ax.set_title("Generación eléctrica por tipo de fuente de energía")
+            ax.set_ylabel("MW")
+            ax.legend(ncol=2)
+            plt.tight_layout()
+    
+            st.pyplot(fig)
+            plt.close(fig)
+            
+        except Exception:
+            pass
         
 # -----------------------------------------------------------------------------
 # ------------------------------------ PDF ------------------------------------
