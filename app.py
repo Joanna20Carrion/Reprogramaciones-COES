@@ -1,4 +1,5 @@
 from __future__ import annotations
+import os
 from pathlib import Path
 from datetime import datetime, date, timedelta
 import io, zipfile, math, requests
@@ -487,6 +488,43 @@ def _plot_indices_pdf(x_labels, y_vals, title, pdf, marcas_x=None, marcas_lbl=No
     pdf.savefig(fig)
     plt.close(fig)
 
+# ---- Medidores ----
+COL_FECHA = "FECHA"
+
+@st.cache_data(show_spinner=False)
+def cargar_df_potencia_activa(ruta_excel: str) -> pd.DataFrame:
+    df_ = pd.read_excel(ruta_excel, header=9)
+    df_.columns = df_.columns.str.strip().str.upper()
+    return df_
+
+def norm_txt(s: str) -> str:
+    return str(s).strip().upper()
+
+def min_no_cero(s: pd.Series) -> float:
+    s = s.dropna()
+    nz = s[s != 0]
+    return float(nz.min()) if not nz.empty else 0.0
+
+def resumen_desde_bloque(nombre_central: str, bloque: pd.DataFrame) -> pd.DataFrame:
+    max_por_col = bloque.max(axis=0, skipna=True)
+    min_por_col = bloque.apply(min_no_cero, axis=0)
+
+    resumen = pd.DataFrame({
+        "CENTRAL": nombre_central,
+        "COLUMNA": list(bloque.columns),
+        "MIN_SIN_CERO": min_por_col.values,
+        "MAX": max_por_col.values
+    })
+
+    # Quitar donde ambos son cero
+    resumen = resumen[~((resumen["MIN_SIN_CERO"] == 0) & (resumen["MAX"].fillna(0) == 0))]
+
+    return resumen.reset_index(drop=True)
+
+def _to_minutes(hhmm: str) -> int:
+    h, m = hhmm.split(":")
+    return int(h) * 60 + int(m)
+
 # -----------------------------------------------------------------------------
 # ------------------------------- PANTALLA ------------------------------------
 # -----------------------------------------------------------------------------
@@ -510,7 +548,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
     pdo_res = work_dir / f"PDO_{fecha_str}" / f"YUPANA_{fecha_str}" / "RESULTADOS"
     
     # ==== Pestañas ====
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(["Demanda", "Motivos, Costo Total e Índices", "Recurso y Error", "CMG" , "Histórico del IEOD","Histórico de Potencia y Energía", "Térmicas", "Curva de SEIN"])
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9  = st.tabs(["Demanda", "Motivos, Costo Total e Índices", "Recurso y Error", "CMG" , "Histórico del IEOD","Histórico de Potencia y Energía", "Térmicas", "Curva de SEIN", "Potencia Activa"])
     
     with tab1:
         # =========================================================
@@ -3539,7 +3577,132 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             
         except Exception:
             pass
+    
+    with tab9:
+        st.markdown(f"### Máximos y mínimos de Medidores de {MES} del {AÑO}")
         
+        if not gen_generar:
+            st.info("Seleccione mes y año en el panel lateral y presione **Generar**.")
+            st.stop()
+    
+        # Ruta relativa al app.py (repo)
+        BASE_DIR = os.path.join(os.path.dirname(__file__), "Potencia Activa")
+        ruta = os.path.join(BASE_DIR, str(AÑO), f"{MES}_{AÑO}.xlsx")
+    
+        if not os.path.exists(ruta):
+            st.error(f"No existe el archivo: {MES}_{AÑO}.xlsx en Potencia Activa/{AÑO}/")
+            st.stop()
+    
+        # Cargar excel
+        df = cargar_df_potencia_activa(ruta)
+    
+        # Columnas HH:MM
+        pat_hora = re.compile(r"^\d{1,2}:\d{2}$")
+        time_cols = [c for c in df.columns if isinstance(c, str) and pat_hora.match(c)]
+        time_cols = sorted(time_cols, key=_to_minutes)
+    
+        if not time_cols:
+            st.error("No se detectaron columnas de hora HH:MM en el Excel.")
+            st.stop()
+    
+        # Config centrales
+        solares_normales = ["C.S. MATARANI", "C.S. CLEMESÍ"]
+        solares_sumar_por_fecha = ["C.S. SAN MARTIN SOLAR", "C.S. RUBI", "C.S. SUNNY"]
+    
+        eolicas_normales = ["C.E. CUPISNIQUE", "C.E. SAN JUAN", "C.E. TRES HERMANAS"]
+        eolicas_grupos_unificar = [
+            {"nombre_unificado": "C.E. WAYRA",
+             "centrales": ["C.E. WAYRA EXTENSION", "C.E. WAYRA I"]},
+            {"nombre_unificado": "C.E. PUNTA LOMITAS",
+             "centrales": ["C.E. PUNTA LOMITAS", "C.E. PUNTA LOMITAS_EXP"]},
+        ]
+    
+        def procesar_individual(nombre_central: str):
+            df_f = df[df["CENTRAL"].astype(str).map(norm_txt) == norm_txt(nombre_central)].copy()
+            if df_f.empty:
+                return None
+            bloque = df_f[time_cols].apply(pd.to_numeric, errors="coerce")
+            return resumen_desde_bloque(nombre_central, bloque)
+    
+        def procesar_sumar_por_fecha(nombre_central: str):
+            df_f = df[df["CENTRAL"].astype(str).map(norm_txt) == norm_txt(nombre_central)].copy()
+            if df_f.empty:
+                return None
+    
+            fechas = pd.to_datetime(df_f[COL_FECHA].astype(str), errors="coerce", dayfirst=True).dt.normalize()
+            bloque = df_f[time_cols].apply(pd.to_numeric, errors="coerce")
+            bloque_sum = bloque.groupby(fechas).sum(min_count=1)
+            bloque_sum = bloque_sum.loc[~pd.isna(bloque_sum.index)]
+            bloque_sum.columns = time_cols
+    
+            return resumen_desde_bloque(nombre_central, bloque_sum)
+    
+        def procesar_grupo_unificado(nombre_unificado: str, centrales: list[str]):
+            df_g = df[df["CENTRAL"].astype(str).map(norm_txt).isin(map(norm_txt, centrales))].copy()
+            if df_g.empty:
+                return None
+    
+            fechas = pd.to_datetime(df_g[COL_FECHA].astype(str), errors="coerce", dayfirst=True).dt.normalize()
+            bloque = df_g[time_cols].apply(pd.to_numeric, errors="coerce")
+            bloque_sum = bloque.groupby(fechas).sum(min_count=1)
+            bloque_sum = bloque_sum.loc[~pd.isna(bloque_sum.index)]
+            bloque_sum.columns = time_cols
+    
+            return resumen_desde_bloque(nombre_unificado, bloque_sum)
+    
+        # Ejecutar
+        resumenes = []
+    
+        for c in solares_normales:
+            r = procesar_individual(c)
+            if r is not None and not r.empty:
+                resumenes.append(r)
+    
+        for c in solares_sumar_por_fecha:
+            r = procesar_sumar_por_fecha(c)
+            if r is not None and not r.empty:
+                resumenes.append(r)
+    
+        for c in eolicas_normales:
+            r = procesar_individual(c)
+            if r is not None and not r.empty:
+                resumenes.append(r)
+    
+        for g in eolicas_grupos_unificar:
+            r = procesar_grupo_unificado(g["nombre_unificado"], g["centrales"])
+            if r is not None and not r.empty:
+                resumenes.append(r)
+    
+        if not resumenes:
+            st.warning("No hay datos para graficar en este mes/año.")
+            st.stop()
+    
+        resumen_final = pd.concat(resumenes, ignore_index=True)
+    
+        # Graficar TODAS las centrales
+        for central, g in resumen_final.groupby("CENTRAL"):
+            g = g.copy()
+            g["X"] = g["COLUMNA"].astype(str).map(_to_minutes)
+            g = g.sort_values("X").reset_index(drop=True)
+    
+            if g.empty:
+                continue
+    
+            x_pos = range(len(g))
+    
+            fig = plt.figure(figsize=(14, 4))
+            plt.plot(x_pos, g["MIN_SIN_CERO"], label="MÍNIMO", linewidth=1)
+            plt.plot(x_pos, g["MAX"], label="MÁXIMO", linewidth=1)
+    
+            plt.title(f"{central}")
+            plt.xlabel("Hora")
+            plt.ylabel("MW")
+            plt.xticks(list(x_pos), g["COLUMNA"].tolist(), rotation=90, fontsize=7)
+            plt.legend()
+            plt.tight_layout()
+    
+            st.pyplot(fig, use_container_width=True)
+                
 # -----------------------------------------------------------------------------
 # ------------------------------------ PDF ------------------------------------
 # -----------------------------------------------------------------------------        
@@ -3554,6 +3717,16 @@ rdo_letras = RDO_LETRAS_DEF
 fin = fecha_sel
 work_dir_str = st.sidebar.text_input("Carpeta de trabajo", value=str(Path.home() / "Descargas_T"))
 work_dir = Path(work_dir_str); work_dir.mkdir(parents=True, exist_ok=True)
+
+MESES = [
+    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+]
+
+st.sidebar.subheader("Potencia Activa (Solares + Eólicas)")
+MES = st.sidebar.selectbox("Mes", MESES, index=1) 
+AÑO = st.sidebar.selectbox("Año", [2024, 2025], index=1)
+
 gen_generar = st.sidebar.button("Generar", type="primary")
 
 st.title("Reporte Programa Diario de Operación")
