@@ -3700,8 +3700,8 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             plt.xticks(list(x_pos), g["COLUMNA"].tolist(), rotation=90, fontsize=7)
             plt.legend()
             plt.tight_layout()
-    
-            st.pyplot(fig, use_container_width=True)
+            
+            st.pyplot(fig, width="stretch")
                 
 # -----------------------------------------------------------------------------
 # ------------------------------------ PDF ------------------------------------
@@ -3724,7 +3724,7 @@ MESES = [
 ]
 
 st.sidebar.subheader("Potencia Activa (Solares + Eólicas)")
-MES = st.sidebar.selectbox("Mes", MESES, index=1) 
+MES = st.sidebar.selectbox("Mes", MESES, index=0) 
 AÑO = st.sidebar.selectbox("Año", [2024, 2025], index=1)
 
 gen_generar = st.sidebar.button("Generar", type="primary")
