@@ -3676,7 +3676,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         if not resumenes:
             st.warning("No hay datos para graficar en este mes/año.")
             st.stop()
-    
+        
         resumen_final = pd.concat(resumenes, ignore_index=True)
     
         # Graficar TODAS las centrales
@@ -3702,6 +3702,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             plt.tight_layout()
             
             st.pyplot(fig, width="stretch")
+            plt.close(fig)
                 
 # -----------------------------------------------------------------------------
 # ------------------------------------ PDF ------------------------------------
