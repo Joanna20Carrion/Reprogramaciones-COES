@@ -3453,7 +3453,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 hovermode="x unified",
             )
         
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
             
         # ===============================
         #   LISTA DE GRÁFICOS TÉRMICOS
@@ -5202,3 +5202,4 @@ if gen_generar:
         pass 
         
 st.caption("© Reporte Programa Diario de Operación - USGE")
+
