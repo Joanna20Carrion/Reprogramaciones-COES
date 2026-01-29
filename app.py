@@ -598,7 +598,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 ax.grid(axis="y", linestyle="--", alpha=0.5)
                 ax.set_title("DEMANDA"); ax.set_ylabel("MW"); ax.legend()
                 plt.tight_layout(); demanda_figs1.append(fig)
-        
+                
             # === ERRORES relativos absolutos ===
             try:
                 if series_dem:
@@ -1095,7 +1095,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 with cols[i]:
                     st.pyplot(fig)
                 plt.close(fig)
-                
+        
         # =========================================================
         # ==================== EÓLICA Y ERROR =====================
         # =========================================================
@@ -1319,7 +1319,6 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         
         except Exception:
             pass
-                
         
         # Error Solar
         try:
@@ -1830,7 +1829,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     margin=dict(t=40, b=40, l=60, r=20)
                 )
         
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
         except Exception:
             pass
         
@@ -1898,12 +1897,87 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     except Exception:
                         pass
                 cur += timedelta(days=1)
-        
-            # Añadir último día RPO A
+            
+            # ==== ÚLTIMO DÍA: DEMANDA fusionada por tramos ====
+            def _demanda_fusion_por_tramos_para_fecha(fecha_obj):
+                yk = fecha_obj.year
+                mk = fecha_obj.strftime("%m")
+                dk = fecha_obj.strftime("%d")
+                M_TXT = MES_TXT[fecha_obj.month - 1]
+            
+                # 1) leer series_dem del día 
+                series_dem_dia = {}
+            
+                for letra in rdo_letras:
+                    url_zip = base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra=letra)
+                    carpeta = work_dir / f"RDO_{letra}_{yk}{mk}{dk}"
+                    resultados = carpeta / f"YUPANA_{dk}{mk}{letra}" / "RESULTADOS"
+            
+                    if not resultados.exists():
+                        try:
+                            r = requests.get(url_zip, timeout=40)
+                            r.raise_for_status()
+                            with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+                                zf.extractall(path=carpeta)
+                        except Exception:
+                            continue
+            
+                    vals_h = rellenar_hasta_48(fila_sin_primer_valor(cargar_dataframe(resultados, archivos_dem["HIDRO"])))
+                    vals_t = rellenar_hasta_48(fila_sin_primer_valor(cargar_dataframe(resultados, archivos_dem["TERMICA"])))
+                    vals_r = rellenar_hasta_48(fila_sin_primer_valor(cargar_dataframe(resultados, archivos_dem["RER"])))
+            
+                    if any((vals_h, vals_t, vals_r)):
+                        series_dem_dia[f"RDO {letra}"] = suma_elementos(vals_h, vals_t, vals_r)
+            
+                if not series_dem_dia:
+                    return None
+            
+                # 2) detectar start de cada RDO con tu misma lógica
+                starts = []
+                for letra in rdo_letras:
+                    k = f"RDO {letra}"
+                    if k not in series_dem_dia:
+                        continue
+                    vals = series_dem_dia[k]
+                    _, yv = recortar_ceros_inicio(vals, horas)
+                    if not yv:
+                        continue
+                    s = len(horas) - len(yv)
+                    starts.append((k, s))
+            
+                starts.sort(key=lambda t: t[1])
+                if not starts:
+                    return None
+            
+                # 3) fusionar por tramos dentro del mismo eje
+                y_fusion = [None] * 48
+                for i, (k, s) in enumerate(starts):
+                    e = starts[i + 1][1] if i + 1 < len(starts) else 48
+                    s = max(0, min(s, 48))
+                    e = max(0, min(e, 48))
+                    if e > s:
+                        # copiar tramo del RDO k
+                        for j in range(s, e):
+                            y_fusion[j] = series_dem_dia[k][j]
+            
+                # normalizar None/NaN a 0
+                out = []
+                for v in y_fusion:
+                    if v is None or (isinstance(v, float) and math.isnan(v)):
+                        out.append(0)
+                    else:
+                        out.append(v)
+                return out[:48]
+
+            # Añadir último día 
             lbl_fin = fin.strftime("%Y-%m-%d")
-            if lbl_fin in series_dia:
-                series_dem_7[lbl_fin] = series_dia[lbl_fin][:48]
-        
+            vals_fusion_fin = _demanda_fusion_por_tramos_para_fecha(fin)
+            if vals_fusion_fin:
+                series_dem_7[lbl_fin] = vals_fusion_fin
+            else:
+                if lbl_fin in series_dia:
+                    series_dem_7[lbl_fin] = series_dia[lbl_fin][:48]
+                    
             # ------------ PLOTLY INTERACTIVO (FUSIÓN) ------------
             if series_dem_7:
         
@@ -1966,7 +2040,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     margin=dict(t=40, b=40, l=60, r=20)
                 )
         
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
         
         except Exception:
             pass
@@ -2113,7 +2187,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     margin=dict(t=40, b=40, l=60, r=20)
                 )
         
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
         
         except Exception as e:
             st.warning(f"Error en histórico eólico: {e}")
@@ -2271,7 +2345,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     margin=dict(t=40, b=40, l=60, r=20)
                 )
         
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
         
         except Exception as e:
             st.warning(f"Error en histórico solar: {e}")
@@ -2453,7 +2527,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     margin=dict(t=40, b=40, l=60, r=20)
                 )
                 
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
                 
         except Exception:
             pass
@@ -3453,7 +3527,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 hovermode="x unified",
             )
         
-            st.plotly_chart(fig, width="stretch")
+            st.plotly_chart(fig, use_container_width=True)
             
         # ===============================
         #   LISTA DE GRÁFICOS TÉRMICOS
@@ -5202,4 +5276,3 @@ if gen_generar:
         pass 
         
 st.caption("© Reporte Programa Diario de Operación - USGE")
-
