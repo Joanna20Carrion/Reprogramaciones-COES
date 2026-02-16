@@ -929,7 +929,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             barras_rer = ["CARPAPATA","LA JOYA","STACRUZ12","HUASAHUASI","RONCADOR","PURMACANA","NIMPERIAL","PIZARRAS",
                           "POECHOS2","CANCHAYLLO","CHANCAY","RUCUY","RUNATULLOII","RUNATULLOIII","YANAPAMPA","POTRERO",
                           "CH MARANON","YARUCAYA","CHHER1","CHANGELI","CHANGELII","CHANGELIII","8AGOSTO","RENOVANDESH1",
-                          "EL CARMEN","CH MANTA","SANTA ROSA 1","SANTA ROSA 2","TUPURI","CH HUALLIN"]
+                          "CH RENOVANDES","EL CARMEN","CH MANTA","SANTA ROSA 1","SANTA ROSA 2","TUPURI","CH HUALLIN"]
             stem_hidro = "Hidro - Despacho (MW)"
             stem_rer   = "Rer y No COES - Despacho (MW)"
         
@@ -1266,9 +1266,9 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             stem_rer = "Rer y No COES - Despacho (MW)"
             barras_solar = [
                 "MAJES","REPARTICION","TACNASOLAR","PANAMERICANASOLAR","MOQUEGUASOLAR",
-                "CS RUBI","INTIPAMPA","CS INTIPAMPA EXPANSION","CS YARUCAYA","CSF YARUCAYA",
-                "CSCLEMESI","CS CARHUAQUERO","CS EL CARMEN","CS MATARANI",
-                "CS SAN MARTIN","CSSUNNY"
+                "CS RUBI","INTIPAMPA","CS INTIPAMPA EXPANSION","CSEXPANSIONINTIPAMPA",
+                "CS YARUCAYA","CSF YARUCAYA", "YARUCAYA", "CSCLEMESI","CS CARHUAQUERO",
+                "CS EL CARMEN","CS MATARANI", "CS SAN MARTIN","CSSUNNY", "CSSUNNYEXP"   
             ]
             # Actual
             series_sol = {}
@@ -1451,7 +1451,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 "STA ROSA WEST TG7  D2 CON H2O",
                 "STA ROSA UTI 6  D2","STA ROSA UTI 5  GAS",
                 "STA ROSA WEST TG7  GAS CON H2O","STA ROSA WEST TG7  GAS",
-                "STA ROSA TG8 GAS",
+                "STA ROSA TG8 GAS", "STAROSA TG8 GAS",
                 "MALACAS3 TG 5  GAS",
                 "OLLEROS CCOMB TG1  GAS",
                 "FENIX GT12  D2","FENIX GT11  D2",
@@ -3606,7 +3606,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             pdo_term  = _to48(series_t.get("PDO")    if "series_t"   in locals() and series_t   else None)
             pdo_eol   = _to48(series_rer.get("PDO")  if "series_rer" in locals() and series_rer else None)
             pdo_solar = _to48(series_sol.get("PDO")  if "series_sol" in locals() and series_sol else None)
-    
+            
             # Acumulados
             y_h = pdo_hidro
             y_t = y_h + pdo_term
