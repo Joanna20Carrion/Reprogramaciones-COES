@@ -3800,7 +3800,7 @@ MESES = [
 
 st.sidebar.subheader("Potencia Activa (Solares + Eólicas)")
 MES = st.sidebar.selectbox("Mes", MESES, index=0) 
-AÑO = st.sidebar.selectbox("Año", [2024, 2026], index=1)
+AÑO = st.sidebar.selectbox("Año", [2024, 2025, 2026], index=1)
 
 gen_generar = st.sidebar.button("Generar", type="primary")
 
