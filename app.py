@@ -927,8 +927,8 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         
         try:
             barras_rer = ["CARPAPATA","LA JOYA","STACRUZ12","HUASAHUASI","RONCADOR","PURMACANA","NIMPERIAL","PIZARRAS",
-                          "POECHOS2","CANCHAYLLO","CHANCAY","RUCUY","RUNATULLOII","RUNATULLOIII","YANAPAMPA","POTRERO",
-                          "CH MARANON","YARUCAYA","CHHER1","CHANGELI","CHANGELII","CHANGELIII","8AGOSTO","RENOVANDESH1",
+                          "POECHOS2","POECHOS1","CANCHAYLLO","CHANCAY","RUCUY","RUNATULLOII","RUNATULLOIII","YANAPAMPA",
+                          "POTRERO","CH MARANON","YARUCAYA","CHHER1","CHANGELI","CHANGELII","CHANGELIII","8AGOSTO","RENOVANDESH1",
                           "CH RENOVANDES","EL CARMEN","CH MANTA","SANTA ROSA 1","SANTA ROSA 2","TUPURI","CH HUALLIN"]
             stem_hidro = "Hidro - Despacho (MW)"
             stem_rer   = "Rer y No COES - Despacho (MW)"
@@ -1268,7 +1268,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 "MAJES","REPARTICION","TACNASOLAR","PANAMERICANASOLAR","MOQUEGUASOLAR",
                 "CS RUBI","INTIPAMPA","CS INTIPAMPA EXPANSION","CSEXPANSIONINTIPAMPA",
                 "CS YARUCAYA","CSF YARUCAYA", "YARUCAYA", "CSCLEMESI","CS CARHUAQUERO",
-                "CS EL CARMEN","CS MATARANI", "CS SAN MARTIN","CSSUNNY", "CSSUNNYEXP"   
+                "CS EL CARMEN","CS MATARANI", "CS SAN MARTIN","CSSUNNY", "CSSUNNYEXP","LAGRINGAV"   
             ]
             # Actual
             series_sol = {}
@@ -1405,99 +1405,63 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 plt.close(fig)
         
         # =========================================================
-        # ================== TERMICA Y ERROR ======================
+        # ======================== TÉRMICA ========================
         # =========================================================
         st.markdown("### TÉRMICA")
         termicas_figs = []
         
         try:
             stem_term = "Termica - Despacho (MW)"
-            
-            series_t = {}
-            
-            grupos_gas = [
-                "KALLPATG1GAS","KALLPATG2GAS","KALLPATG3GAS",
-                "KALLPACC1GAS","KALLPACC2GAS","KALLPACC3GAS",
-                "KALLPACC12GAS","KALLPACC23GAS","KALLPACC13GAS","KALLPACC123GAS",
-                "CHILCA1TG1GAS","CHILCA1TG2GAS","CHILCA1TG3GAS",
-                "CHILCA1CC1GAS","CHILCA1CC2GAS","CHILCA1CC3GAS",
-                "CHILCA1CC12GAS","CHILCA1CC23GAS","CHILCA1CC13GAS","CHILCA1CC123GAS",
-                "AGETG1GAS","AGETG2GAS",
-                "MAL2TGN4GAS","MAL3TG5D2",
-                "VENT3D2","VENT4D2",
-                "VENT3GAS","VENT4GAS",
-                "VENTCC3GAS","VENTCC4GAS","VENTCC34GAS",
-                "VENTCC3GASFD","VENTCC4GASFD","VENTCC34GASFD",
-                "RFILO2TG1D2","RFILO2TG2D2","RFILO2TG3D2",
-                "INDEPGAS",
-                "OLLEROSTG1GAS",
-                "LFLORESTG1GAS",
-                "SNTV1R500","SNTV2R500","SNTV3R500",
-                "SHCUMMINS",
-                "CHILSLZ12R500D2",
-                "MOLL123D2",
-                "FENIXGT12GAS","FENIXCCGT12GAS",
-                "FENIXGT11GAS","FENIXCCGT11GAS",
-                "FENIXCCGT11GT12GAS",
-                "RECKA TG1  D2",
-                "PTOBRVO TG3  D2","PTOBRVO TG1  D2","PTOBRVO TG4  D2","PTOBRVO TG2  D2",
-                "FENIXCCGT11GT12D2",
-                "CTNEPITG43D2","CTNEPITG42D2","CTNEPITG41D2",
-                "RF ETEN TG1  D2","RF ETEN TG2  D2",
-                "RF PTO MALDONADO  D2","RF PUCALLPA  D2",
-                "CHILCA2 CCOMB TG41  GAS","CHILCA2 TG41  GAS",
-                "CHILINA TG  D2",
-                "STA ROSA UTI 6  GAS","STA ROSA UTI 5  D2",
-                "STA ROSA WEST TG7  D2 CON H2O",
-                "STA ROSA UTI 6  D2","STA ROSA UTI 5  GAS",
-                "STA ROSA WEST TG7  GAS CON H2O","STA ROSA WEST TG7  GAS",
-                "STA ROSA TG8 GAS", "STAROSA TG8 GAS",
-                "MALACAS3 TG 5  GAS",
-                "OLLEROS CCOMB TG1  GAS",
-                "FENIX GT12  D2","FENIX GT11  D2",
-                "FENIX CCOMB GT12  D2","FENIX CCOMB GT11  D2",
-                "LFLORES CCOMB TG1  GAS",
-                "TUMBES MAK 1  D2","TUMBES MAK 2  D2",
-                "REFTALARA TV1TV2FXRFG",
-                "MAL1TG6D2","MAL1TG6GAS"
-            ]
-            
-            # ----- PDO -----
-            df_pdo_t = cargar_dataframe(pdo_res, stem_term)
-            tot_term_pdo = rellenar_hasta_48(totales_rer(df_pdo_t, grupos_gas))
-            if tot_term_pdo:
-                series_t["PDO"] = tot_term_pdo
+            stem_rer  = "Rer y No COES - Despacho (MW)"
         
-            # ----- RDO A–E -----
+            # Lista de térmicas RER (no COES)
+            grupos_gas = [
+                "MAPLE","PARAMONGA","REPARTICION","HUAYCOLORO","TABLAZO","CTB DONA CATALINA","CT CANA BRAVA",
+                "CT SAN JACINTO","CTB CALLAO","CT TALLANCA","CTAGROOLMOS","CASAGRANDE","CS SAN MARTIN",
+                "CS MATARANI","CS CARHUAQUERO","CSCOENERGY","CSCLEMESI","CSEXPANSIONINTIPAMPA","PIAS"
+            ]
+            grupos_gas = [g.upper().strip() for g in grupos_gas]
+        
+            # === Series TÉRMICAS (PDO + RDOs) ===
+            series_t = {}
+        
+            # --- PDO ---
+            df_pdo_term = cargar_dataframe(pdo_res, stem_term)
+            df_pdo_rer  = cargar_dataframe(pdo_res, stem_rer)
+        
+            tot_term  = rellenar_hasta_48(totales_hidro(df_pdo_term))   # Suma todas las térmicas COES
+            tot_rer_t = rellenar_hasta_48(totales_rer(df_pdo_rer, grupos_gas))  # Solo térmicas RER
+        
+            if tot_term and tot_rer_t:
+                series_t["PDO"] = suma_elementos(tot_term, tot_rer_t)
+        
+            # --- RDOs A–E ---
             for letra in rdo_letras:
-                rdo_res = (
-                    work_dir / f"RDO_{letra}_{fecha_str}" /
-                    f"YUPANA_{ddmm}{letra}" / "RESULTADOS"
-                )
-                df_rdo_t = cargar_dataframe(rdo_res, stem_term)
-                tot_term_rdo = rellenar_hasta_48(totales_rer(df_rdo_t, grupos_gas))
-                if tot_term_rdo:
-                    series_t[f"RDO {letra}"] = tot_term_rdo
-                    
+                rdo_res = work_dir / f"RDO_{letra}_{fecha_str}" / f"YUPANA_{ddmm}{letra}" / "RESULTADOS"
+                df_rdo_term = cargar_dataframe(rdo_res, stem_term)
+                df_rdo_rer  = cargar_dataframe(rdo_res, stem_rer)
+        
+                t_term = rellenar_hasta_48(totales_hidro(df_rdo_term))
+                t_rer  = rellenar_hasta_48(totales_rer(df_rdo_rer, grupos_gas))
+        
+                if t_term and t_rer:
+                    series_t[f"RDO {letra}"] = suma_elementos(t_term, t_rer)
+        
+            # === TÉRMICA (MW) — Línea ===
             if series_t:
                 fig, ax = plt.subplots(figsize=(11, 5))
                 yvals_t = []
-        
                 for nombre, valores in series_t.items():
                     xlab, yv = recortar_ceros_inicio(valores, horas)
                     if not yv:
                         continue
-        
                     start = len(horas) - len(yv)
                     xnum = np.arange(start, start + len(yv))
-        
                     yvals_t.extend(yv)
                     ax.plot(xnum, yv, marker="o", linewidth=2, label=nombre)
         
-                aplicar_formato_xy(
-                    ax, L=len(horas), ticks_pos=ticks_pos, horas=horas,
-                    y_values=yvals_t, ypad=0.05, xpad=0.5
-                )
+                aplicar_formato_xy(ax, L=len(horas), ticks_pos=ticks_pos, horas=horas,
+                                   y_values=yvals_t, ypad=0.05, xpad=0.5)
         
                 ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
                 ax.grid(axis="y", linestyle="--", alpha=0.5)
@@ -1507,40 +1471,29 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 plt.tight_layout()
                 termicas_figs.append(fig)
         
-        except Exception:
-            pass
+        except Exception as e:
+            st.warning(f"No se pudo procesar TÉRMICA: {e}")
         
         # =========================================================
-        # ================== ERROR TÉRMICAS =======================
+        # ================== ERROR TÉRMICAS ========================
         # =========================================================
         try:
             if series_t:
-        
-                orden_series = [
-                    k for k in (["PDO"] + [f"RDO {l}" for l in rdo_letras])
-                    if k in series_t
-                ]
-        
-                pares = [
-                    (orden_series[i], orden_series[i+1])
-                    for i in range(len(orden_series)-1)
-                ]
+                orden_series = [k for k in (["PDO"] + [f"RDO {l}" for l in rdo_letras]) if k in series_t]
+                pares = [(orden_series[i], orden_series[i+1]) for i in range(len(orden_series)-1)]
         
                 curvas = []
                 L_global = None
         
-                # ----- Calcular error crudo -----
                 for (ante, act) in pares:
                     va = series_t[ante]
                     vb = series_t[act]
-        
                     mL = min(len(va), len(vb), 48)
                     if mL <= 0:
                         continue
         
                     etiqueta = f"Error {ante} - {act}"
                     vals = [_rel_err_abs_pct(va[i], vb[i]) for i in range(mL)]
-        
                     y_clean = np.array([_omit_0_100(v) for v in vals], dtype=float)
         
                     if L_global is None:
@@ -1553,43 +1506,27 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 if curvas:
                     L = L_global
                     x = np.arange(L)
-        
-                    # ----- detectar primeros índices válidos -----
                     for c in curvas:
                         ysub = c["y_clean"][:L]
                         idx = np.where(~np.isnan(ysub))[0]
-                        if len(idx) == 0:
-                            c["start_idx"] = None
-                        else:
-                            c["start_idx"] = int(idx[0])
+                        c["start_idx"] = int(idx[0]) if len(idx) else None
         
-                    # ----- apagar anteriores -----
                     y_final = [c["y_clean"][:L].copy() for c in curvas]
-        
                     for i in range(1, len(curvas)):
                         s_new = curvas[i]["start_idx"]
                         if s_new is not None:
                             for j in range(i):
                                 y_final[j][s_new:] = np.nan
         
-                    # ===== Gráfico error =====
                     fig, ax = plt.subplots(figsize=(11, 5))
                     yerr_all = []
-        
                     for i, c in enumerate(curvas):
                         serie_plot = y_final[i]
                         yerr_all.extend(serie_plot[~np.isnan(serie_plot)])
+                        ax.plot(x, serie_plot, marker="o", linewidth=2, label=c["label"])
         
-                        ax.plot(
-                            x, serie_plot,
-                            marker='o', linewidth=2,
-                            label=c["label"]
-                        )
-        
-                    aplicar_formato_xy(
-                        ax, L=L, ticks_pos=ticks_pos, horas=horas,
-                        y_values=yerr_all, ypad=0.05, xpad=0.5
-                    )
+                    aplicar_formato_xy(ax, L=L, ticks_pos=ticks_pos, horas=horas,
+                                       y_values=yerr_all, ypad=0.05, xpad=0.5)
         
                     ax.grid(axis="y", linestyle="--", alpha=0.5)
                     ax.set_title("Error Porcentual de TÉRMICA")
@@ -1598,8 +1535,8 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     plt.tight_layout()
                     termicas_figs.append(fig)
         
-        except Exception:
-            pass
+        except Exception as e:
+            st.warning(f"No se pudo calcular error térmico: {e}")
         
         # ===== Mostrar columnas =====
         if termicas_figs:
@@ -1608,6 +1545,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 with cols[i]:
                     st.pyplot(fig)
                 plt.close(fig)
+
                 
     with tab4:
         # =========================================================
@@ -3640,6 +3578,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             )
             
             ax.set_ylim(bottom=0)
+            ax.yaxis.set_major_locator(mticker.MultipleLocator(1000))
             ax.grid(axis="y", linestyle="--", alpha=0.5)
             ax.set_title("Generación eléctrica por tipo de fuente de energía")
             ax.set_ylabel("MW")
