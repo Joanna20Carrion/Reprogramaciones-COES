@@ -1,4 +1,5 @@
 from __future__ import annotations
+import calendar
 import os
 from pathlib import Path
 from datetime import datetime, date, timedelta
@@ -3723,34 +3724,20 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             
     with tab10:
         # =========================================================
-        # ========== HISTÓRICO ELECTRO ORIENTE =====================
+        # ================ HISTÓRICO ELECTRO ORIENTE ==============
         # =========================================================
         try:
             st.markdown("### Histórico Electro Oriente")
     
-            # Usa las fechas seleccionadas en el sidebar
             fecha_inicio = ini_eo
             fecha_fin = fin_eo
     
-            # Ejecutar solo cuando se presione el botón principal
             if gen_generar:
                 ruta_descarga = work_dir / "Electro_Oriente"
                 ruta_descarga.mkdir(parents=True, exist_ok=True)
-                
-                # Establecer idioma español
-                try:
-                    locale.setlocale(locale.LC_TIME, "es_ES.UTF-8")
-                except:
-                    try:
-                        locale.setlocale(locale.LC_TIME, "Spanish_Spain")
-                    except:
-                        st.warning("⚠️ No se pudo establecer el idioma español; se usará inglés.")
     
-                meses = {
-                    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
-                    5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
-                    9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
-                }
+                import urllib3
+                urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
     
                 fecha_actual = datetime.combine(fecha_inicio, datetime.min.time())
                 resultados = []
@@ -3760,11 +3747,11 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                         d = f"{fecha_actual.day:02d}"
                         m = f"{fecha_actual.month:02d}"
                         y = str(fecha_actual.year)
-                        M = meses[fecha_actual.month]
+                        M = MES_TXT[int(m) - 1]
+                        ddmm = f"{d}{m}"
     
-                        url = (f"https://www.coes.org.pe/portal/browser/download?"
-                               f"url=Post%20Operaci%C3%B3n%2FReportes%2FIEOD%2F"
-                               f"{y}%2F{m}_{M}%2F{d}%2FAnexoA_{d}{m}.xlsx")
+                        # ✅ Usa la plantilla global
+                        url = base_ieod.format(y=y, m=m, M=M, d=d, ddmm=ddmm)
                         nombre_archivo = f"AnexoA_{d}{m}_{y}.xlsx"
                         ruta_archivo = ruta_descarga / nombre_archivo
     
@@ -3796,7 +3783,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                             pass
     
                         fecha_actual += timedelta(days=1)
-    
+                        
                 if resultados:
                     df_res = pd.DataFrame(resultados)
                     df_res.sort_values("Fecha", inplace=True)
@@ -3806,16 +3793,27 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     ax.plot(df_res["Fecha"], df_res["Promedio"],
                             marker='o', color='blue', linewidth=2,
                             markersize=3, markerfacecolor='white', markeredgewidth=0.7)
-                    
+    
                     ax.set_title("Promedio Diario", fontsize=14, fontweight='bold')
                     ax.set_xlabel("Fecha")
                     ax.set_ylabel("MW")
                     ax.grid(True, linestyle="--", alpha=0.6)
                     ax.xaxis.set_major_locator(mdates.DayLocator(interval=15))
-                    ax.xaxis.set_major_formatter(mdates.DateFormatter('%d-%b'))
+    
+                    meses_es = {
+                        'Jan': 'Ene', 'Feb': 'Feb', 'Mar': 'Mar', 'Apr': 'Abr', 'May': 'May', 'Jun': 'Jun',
+                        'Jul': 'Jul', 'Aug': 'Ago', 'Sep': 'Sep', 'Oct': 'Oct', 'Nov': 'Nov', 'Dec': 'Dic'
+                    }
+                    def formatear_fecha_espanol(x, pos=None):
+                        fecha = mdates.num2date(x)
+                        mes_en = fecha.strftime('%b')
+                        mes_es = meses_es.get(mes_en, mes_en)
+                        return fecha.strftime(f'%d-{mes_es}')
+    
+                    ax.xaxis.set_major_formatter(plt.FuncFormatter(formatear_fecha_espanol))
                     plt.xticks(rotation=45, ha='right', fontsize=7)
                     plt.tight_layout()
-                    st.pyplot(fig)
+                    st.pyplot(fig, width="stretch")
                     plt.close(fig)
     
                     # ==================== Tabla ====================
@@ -3832,13 +3830,15 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                         file_name="Promedios_Electro_Oriente.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
+                    
+                    st.success(f"✅ Procesados {len(df_res)} días entre {fecha_inicio.strftime('%d/%m/%Y')} y {fecha_fin.strftime('%d/%m/%Y')}")
                 else:
                     st.warning("No se encontraron datos para el rango seleccionado.")
             else:
                 st.info("Selecciona las fechas en el panel lateral y presiona **Generar** para ejecutar este análisis.")
         except Exception:
             st.error("Ocurrió un error al generar el reporte de Electro Oriente.")
-                
+
 # -----------------------------------------------------------------------------
 # ------------------------------------ PDF ------------------------------------
 # -----------------------------------------------------------------------------        
