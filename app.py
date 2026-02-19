@@ -13,8 +13,10 @@ import numpy as np
 import re, unicodedata
 from zoneinfo import ZoneInfo
 import plotly.graph_objects as go
-
+import locale, urllib3
+import matplotlib.dates as mdates
 import warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 warnings.filterwarnings(
     "ignore",
     message="Attempting to set identical low and high ylims makes transformation singular"
@@ -548,7 +550,9 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
     pdo_res = work_dir / f"PDO_{fecha_str}" / f"YUPANA_{fecha_str}" / "RESULTADOS"
     
     # ==== Pestañas ====
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9  = st.tabs(["Demanda", "Motivos, Costo Total e Índices", "Recurso y Error", "CMG" , "Histórico del IEOD","Histórico de Potencia y Energía", "Térmicas", "Curva de SEIN", "Potencia Activa"])
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9,tab10  = st.tabs(["Demanda", "Motivos, Costo Total e Índices", 
+                                                                           "Recurso y Error", "CMG" , "Histórico del IEOD","Histórico de Potencia y Energía", 
+                                                                           "Térmicas", "Curva de SEIN", "Potencia Activa", "Histórico Electro Oriente"])
     
     with tab1:
         # =========================================================
@@ -3465,7 +3469,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 hovermode="x unified",
             )
         
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
             
         # ===============================
         #   LISTA DE GRÁFICOS TÉRMICOS
@@ -3716,6 +3720,124 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             
             st.pyplot(fig, width="stretch")
             plt.close(fig)
+            
+    with tab10:
+        # =========================================================
+        # ========== HISTÓRICO ELECTRO ORIENTE =====================
+        # =========================================================
+        try:
+            st.markdown("### Histórico Electro Oriente")
+    
+            # Usa las fechas seleccionadas en el sidebar
+            fecha_inicio = ini_eo
+            fecha_fin = fin_eo
+    
+            # Ejecutar solo cuando se presione el botón principal
+            if gen_generar:
+                ruta_descarga = work_dir / "Electro_Oriente"
+                ruta_descarga.mkdir(parents=True, exist_ok=True)
+                
+                # Establecer idioma español
+                try:
+                    locale.setlocale(locale.LC_TIME, "es_ES.UTF-8")
+                except:
+                    try:
+                        locale.setlocale(locale.LC_TIME, "Spanish_Spain")
+                    except:
+                        st.warning("⚠️ No se pudo establecer el idioma español; se usará inglés.")
+    
+                meses = {
+                    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
+                    5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
+                    9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
+                }
+    
+                fecha_actual = datetime.combine(fecha_inicio, datetime.min.time())
+                resultados = []
+    
+                with st.spinner("Descargando y procesando archivos de Electro Oriente..."):
+                    while fecha_actual <= datetime.combine(fecha_fin, datetime.min.time()):
+                        d = f"{fecha_actual.day:02d}"
+                        m = f"{fecha_actual.month:02d}"
+                        y = str(fecha_actual.year)
+                        M = meses[fecha_actual.month]
+    
+                        url = (f"https://www.coes.org.pe/portal/browser/download?"
+                               f"url=Post%20Operaci%C3%B3n%2FReportes%2FIEOD%2F"
+                               f"{y}%2F{m}_{M}%2F{d}%2FAnexoA_{d}{m}.xlsx")
+                        nombre_archivo = f"AnexoA_{d}{m}_{y}.xlsx"
+                        ruta_archivo = ruta_descarga / nombre_archivo
+    
+                        try:
+                            if not ruta_archivo.exists():
+                                r = requests.get(url, verify=False, timeout=30)
+                                if r.status_code == 200 and r.content:
+                                    ruta_archivo.write_bytes(r.content)
+                                else:
+                                    fecha_actual += timedelta(days=1)
+                                    continue
+    
+                            df = pd.read_excel(ruta_archivo, sheet_name="DESPACHO_EJECUTADO", header=None)
+                            fila_titulos = df.iloc[8]
+                            col_index = None
+                            for i, valor in enumerate(fila_titulos):
+                                if isinstance(valor, str) and "ELECTRO ORIENTE" in valor.upper():
+                                    col_index = i
+                                    break
+                            if col_index is None:
+                                fecha_actual += timedelta(days=1)
+                                continue
+    
+                            valores = pd.to_numeric(df.iloc[10:58, col_index], errors="coerce")
+                            promedio = valores.mean(skipna=True)
+                            resultados.append({"Fecha": fecha_actual, "Promedio": promedio})
+    
+                        except Exception:
+                            pass
+    
+                        fecha_actual += timedelta(days=1)
+    
+                if resultados:
+                    df_res = pd.DataFrame(resultados)
+                    df_res.sort_values("Fecha", inplace=True)
+    
+                    # ==================== Gráfico ====================
+                    fig, ax = plt.subplots(figsize=(10, 5))
+                    ax.plot(df_res["Fecha"], df_res["Promedio"],
+                            marker='o', color='blue', linewidth=2,
+                            markersize=3, markerfacecolor='white', markeredgewidth=0.7)
+                    
+                    ax.set_title("Promedio Diario", fontsize=14, fontweight='bold')
+                    ax.set_xlabel("Fecha")
+                    ax.set_ylabel("MW")
+                    ax.grid(True, linestyle="--", alpha=0.6)
+                    ax.xaxis.set_major_locator(mdates.DayLocator(interval=15))
+                    ax.xaxis.set_major_formatter(mdates.DateFormatter('%d-%b'))
+                    plt.xticks(rotation=45, ha='right', fontsize=7)
+                    plt.tight_layout()
+                    st.pyplot(fig)
+                    plt.close(fig)
+    
+                    # ==================== Tabla ====================
+                    df_res["Fecha"] = df_res["Fecha"].dt.strftime("%d/%m/%Y")
+                    st.dataframe(df_res, width="stretch")
+    
+                    # ==================== Descarga Excel ====================
+                    excel_bytes = io.BytesIO()
+                    df_res.to_excel(excel_bytes, index=False)
+                    excel_bytes.seek(0)
+                    st.download_button(
+                        "📥 Descargar resultados en Excel",
+                        data=excel_bytes,
+                        file_name="Promedios_Electro_Oriente.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                else:
+                    st.warning("No se encontraron datos para el rango seleccionado.")
+            else:
+                st.info("Selecciona las fechas en el panel lateral y presiona **Generar** para ejecutar este análisis.")
+        except Exception:
+            st.error("Ocurrió un error al generar el reporte de Electro Oriente.")
                 
 # -----------------------------------------------------------------------------
 # ------------------------------------ PDF ------------------------------------
@@ -3739,7 +3861,19 @@ MESES = [
 
 st.sidebar.subheader("Potencia Activa (Solares + Eólicas)")
 MES = st.sidebar.selectbox("Mes", MESES, index=0) 
-AÑO = st.sidebar.selectbox("Año", [2024, 2025, 2026], index=1)
+AÑO = st.sidebar.selectbox("Año", [2024, 2025, 2026], index=2)
+
+st.sidebar.subheader("Histórico Electro Oriente")
+ini_eo = st.sidebar.date_input(
+    "Fecha de inicio (Electro Oriente)",
+    value=date(2025, 1, 1),
+    format="DD/MM/YYYY"
+)
+fin_eo = st.sidebar.date_input(
+    "Fecha de fin (Electro Oriente)",
+    value=date(2025, 1, 10),
+    format="DD/MM/YYYY"
+)
 
 gen_generar = st.sidebar.button("Generar", type="primary")
 
