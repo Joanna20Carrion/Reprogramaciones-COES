@@ -934,7 +934,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             barras_rer = ["CARPAPATA","LA JOYA","STACRUZ12","HUASAHUASI","RONCADOR","PURMACANA","NIMPERIAL","PIZARRAS",
                           "POECHOS2","POECHOS1","CANCHAYLLO","CHANCAY","RUCUY","RUNATULLOII","RUNATULLOIII","YANAPAMPA",
                           "POTRERO","CH MARANON","YARUCAYA","CHHER1","CHANGELI","CHANGELII","CHANGELIII","8AGOSTO","RENOVANDESH1",
-                          "CH RENOVANDES","EL CARMEN","CH MANTA","SANTA ROSA 1","SANTA ROSA 2","TUPURI","CH HUALLIN"]
+                          "CH RENOVANDES","CH MANTA","SANTA ROSA 1","SANTA ROSA 2","TUPURI","CH HUALLIN"]
             stem_hidro = "Hidro - Despacho (MW)"
             stem_rer   = "Rer y No COES - Despacho (MW)"
         
@@ -1270,9 +1270,9 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         try:
             stem_rer = "Rer y No COES - Despacho (MW)"
             barras_solar = [
-                "MAJES","REPARTICION","TACNASOLAR","PANAMERICANASOLAR","MOQUEGUASOLAR",
+                "MAJES","TACNASOLAR","PANAMERICANASOLAR","MOQUEGUASOLAR",
                 "CS RUBI","INTIPAMPA","CS INTIPAMPA EXPANSION","CSEXPANSIONINTIPAMPA",
-                "CS YARUCAYA","CSF YARUCAYA", "YARUCAYA", "CSCLEMESI","CS CARHUAQUERO",
+                "CS YARUCAYA","CSF YARUCAYA", "CSCLEMESI","CS CARHUAQUERO",
                 "CS EL CARMEN","CS MATARANI", "CS SAN MARTIN","CSSUNNY", "CSSUNNYEXP","LAGRINGAV"   
             ]
             # Actual
@@ -1422,8 +1422,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             # Lista de térmicas RER (no COES)
             grupos_gas = [
                 "MAPLE","PARAMONGA","REPARTICION","HUAYCOLORO","TABLAZO","CTB DONA CATALINA","CT CANA BRAVA",
-                "CT SAN JACINTO","CTB CALLAO","CT TALLANCA","CTAGROOLMOS","CASAGRANDE","CS SAN MARTIN",
-                "CS MATARANI","CS CARHUAQUERO","CSCOENERGY","CSCLEMESI","CSEXPANSIONINTIPAMPA","PIAS"
+                "CT SAN JACINTO","CTB CALLAO","CT TALLANCA","CTAGROOLMOS","CASAGRANDE","CSCOENERGY","PIAS"
             ]
             grupos_gas = [g.upper().strip() for g in grupos_gas]
         
@@ -1550,7 +1549,6 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 with cols[i]:
                     st.pyplot(fig)
                 plt.close(fig)
-
                 
     with tab4:
         # =========================================================
