@@ -1549,7 +1549,15 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 with cols[i]:
                     st.pyplot(fig)
                 plt.close(fig)
-                
+    if series_h:
+        st.session_state.series_h = series_h
+    if series_t:
+        st.session_state.series_t = series_t
+    if series_rer:
+        st.session_state.series_rer = series_rer
+    if series_sol:
+        st.session_state.series_sol = series_sol          
+        
     with tab4:
         # =========================================================
         # ======================== CMG ============================
@@ -3499,10 +3507,15 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             pdo_res, rdo_letras, work_dir,
             fecha_str, ddmm
         )
-        
+     
+    series_h   = st.session_state.get("series_h", {})
+    series_t   = st.session_state.get("series_t", {})
+    series_rer = st.session_state.get("series_rer", {})
+    series_sol = st.session_state.get("series_sol", {})
+
     with tab8:
         st.markdown("### Curva del SEIN")
-        
+    
         try:
             def _to48(arr):
                 if arr is None:
@@ -3520,26 +3533,29 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             pdo_term  = _to48(series_t.get("PDO")    if "series_t"   in locals() and series_t   else None)
             pdo_eol   = _to48(series_rer.get("PDO")  if "series_rer" in locals() and series_rer else None)
             pdo_solar = _to48(series_sol.get("PDO")  if "series_sol" in locals() and series_sol else None)
-            
+    
             # Acumulados
             y_h = pdo_hidro
             y_t = y_h + pdo_term
             y_e = y_t + pdo_eol
             y_s = y_e + pdo_solar
     
-            x = np.arange(len(horas))
+            # === Eje X de 00:30 a 24:00 ===
+            x = np.arange(0.5, 48.5, 1)  # 48 puntos centrados en cada media hora
+            horas = [f"{h:02d}:{m:02d}" for h in range(0, 24) for m in (30, 0)][1:] + ["24:00"]
     
             fig, ax = plt.subplots(figsize=(11, 5))
     
             # ==== ÁREAS COLOREADAS (sin bordes) ====
-            ax.fill_between(x, 0,   y_h, color="#1f77b4", alpha=0.5, label="HIDRO",
-                            edgecolor="none", linewidth=0)
-            ax.fill_between(x, y_h, y_t, color="#d62728", alpha=0.5, label="TÉRMICA",
-                            edgecolor="none", linewidth=0)
-            ax.fill_between(x, y_t, y_e, color="#2ca02c", alpha=0.5, label="EÓLICA",
-                            edgecolor="none", linewidth=0)
-            ax.fill_between(x, y_e, y_s, color="#ff7f0e", alpha=0.5, label="SOLAR",
-                            edgecolor="none", linewidth=0)
+            ax.fill_between(x, 0,   y_h, color="#1f77b4", alpha=0.5, label="HIDRO",   edgecolor="none", linewidth=0)
+            ax.fill_between(x, y_h, y_t, color="#d62728", alpha=0.5, label="TÉRMICA", edgecolor="none", linewidth=0)
+            ax.fill_between(x, y_t, y_e, color="#2ca02c", alpha=0.5, label="EÓLICA",  edgecolor="none", linewidth=0)
+            ax.fill_between(x, y_e, y_s, color="#ff7f0e", alpha=0.5, label="SOLAR",   edgecolor="none", linewidth=0)
+    
+            # === Ajuste del eje X ===
+            ax.set_xlim(0.5, 48.5)  # fuerza inicio 00:30 y fin 24:00
+            ax.set_xticks(np.arange(1, 49, 2))  # etiquetas cada hora (más legible)
+            ax.set_xticklabels(horas[::2], rotation=90, fontsize=7)
     
             # Escala correcta en Y
             y_all = np.concatenate([y_h, y_t, y_e, y_s])
@@ -3552,7 +3568,8 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 ypad=0.08,
                 xpad=0.5
             )
-            
+    
+            # === Estilo general ===
             ax.set_ylim(bottom=0)
             ax.yaxis.set_major_locator(mticker.MultipleLocator(1000))
             ax.grid(axis="y", linestyle="--", alpha=0.5)
@@ -3561,12 +3578,12 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             ax.legend(ncol=2)
             plt.tight_layout()
     
-            st.pyplot(fig)
+            st.pyplot(fig, clear_figure=False)
             plt.close(fig)
-            
-        except Exception:
-            pass
     
+        except Exception as e:
+            st.error(f"❌ Error en tab8: {e}")
+        
     with tab9:
         st.markdown(f"### Máximos y mínimos de Medidores de {MES} del {AÑO}")
         
