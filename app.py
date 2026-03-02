@@ -551,9 +551,10 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
     pdo_res = work_dir / f"PDO_{fecha_str}" / f"YUPANA_{fecha_str}" / "RESULTADOS"
     
     # ==== Pestañas ====
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9,tab10  = st.tabs(["Demanda", "Motivos, Costo Total e Índices", 
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9,tab10, tab11  = st.tabs(["Demanda", "Motivos, Costo Total e Índices", 
                                                                            "Recurso y Error", "CMG" , "Histórico del IEOD","Histórico de Potencia y Energía", 
-                                                                           "Térmicas", "Curva de SEIN", "Potencia Activa", "Histórico Electro Oriente"])
+                                                                           "Térmicas", "Curva de SEIN", "Potencia Activa", "Histórico Electro Oriente",
+                                                                           "Otros"])
     
     with tab1:
         # =========================================================
@@ -3589,126 +3590,124 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         
         if not gen_generar:
             st.info("Seleccione mes y año en el panel lateral y presione **Generar**.")
-            st.stop()
-    
-        # Ruta relativa al app.py (repo)
-        BASE_DIR = os.path.join(os.path.dirname(__file__), "Potencia Activa")
-        ruta = os.path.join(BASE_DIR, str(AÑO), f"{MES}_{AÑO}.xlsx")
-    
-        if not os.path.exists(ruta):
-            st.error(f"No existe el archivo: {MES}_{AÑO}.xlsx en Potencia Activa/{AÑO}/")
-            st.stop()
-    
-        # Cargar excel
-        df = cargar_df_potencia_activa(ruta)
-    
-        # Columnas HH:MM
-        pat_hora = re.compile(r"^\d{1,2}:\d{2}$")
-        time_cols = [c for c in df.columns if isinstance(c, str) and pat_hora.match(c)]
-        time_cols = sorted(time_cols, key=_to_minutes)
-    
-        if not time_cols:
-            st.error("No se detectaron columnas de hora HH:MM en el Excel.")
-            st.stop()
-    
-        # Config centrales
-        solares_normales = ["C.S. MATARANI", "C.S. CLEMESÍ"]
-        solares_sumar_por_fecha = ["C.S. SAN MARTIN SOLAR", "C.S. RUBI", "C.S. SUNNY"]
-    
-        eolicas_normales = ["C.E. CUPISNIQUE", "C.E. SAN JUAN", "C.E. TRES HERMANAS"]
-        eolicas_grupos_unificar = [
-            {"nombre_unificado": "C.E. WAYRA",
-             "centrales": ["C.E. WAYRA EXTENSION", "C.E. WAYRA I"]},
-            {"nombre_unificado": "C.E. PUNTA LOMITAS",
-             "centrales": ["C.E. PUNTA LOMITAS", "C.E. PUNTA LOMITAS_EXP"]},
-        ]
-    
-        def procesar_individual(nombre_central: str):
-            df_f = df[df["CENTRAL"].astype(str).map(norm_txt) == norm_txt(nombre_central)].copy()
-            if df_f.empty:
-                return None
-            bloque = df_f[time_cols].apply(pd.to_numeric, errors="coerce")
-            return resumen_desde_bloque(nombre_central, bloque)
-    
-        def procesar_sumar_por_fecha(nombre_central: str):
-            df_f = df[df["CENTRAL"].astype(str).map(norm_txt) == norm_txt(nombre_central)].copy()
-            if df_f.empty:
-                return None
-    
-            fechas = pd.to_datetime(df_f[COL_FECHA].astype(str), errors="coerce", dayfirst=True).dt.normalize()
-            bloque = df_f[time_cols].apply(pd.to_numeric, errors="coerce")
-            bloque_sum = bloque.groupby(fechas).sum(min_count=1)
-            bloque_sum = bloque_sum.loc[~pd.isna(bloque_sum.index)]
-            bloque_sum.columns = time_cols
-    
-            return resumen_desde_bloque(nombre_central, bloque_sum)
-    
-        def procesar_grupo_unificado(nombre_unificado: str, centrales: list[str]):
-            df_g = df[df["CENTRAL"].astype(str).map(norm_txt).isin(map(norm_txt, centrales))].copy()
-            if df_g.empty:
-                return None
-    
-            fechas = pd.to_datetime(df_g[COL_FECHA].astype(str), errors="coerce", dayfirst=True).dt.normalize()
-            bloque = df_g[time_cols].apply(pd.to_numeric, errors="coerce")
-            bloque_sum = bloque.groupby(fechas).sum(min_count=1)
-            bloque_sum = bloque_sum.loc[~pd.isna(bloque_sum.index)]
-            bloque_sum.columns = time_cols
-    
-            return resumen_desde_bloque(nombre_unificado, bloque_sum)
-    
-        # Ejecutar
-        resumenes = []
-    
-        for c in solares_normales:
-            r = procesar_individual(c)
-            if r is not None and not r.empty:
-                resumenes.append(r)
-    
-        for c in solares_sumar_por_fecha:
-            r = procesar_sumar_por_fecha(c)
-            if r is not None and not r.empty:
-                resumenes.append(r)
-    
-        for c in eolicas_normales:
-            r = procesar_individual(c)
-            if r is not None and not r.empty:
-                resumenes.append(r)
-    
-        for g in eolicas_grupos_unificar:
-            r = procesar_grupo_unificado(g["nombre_unificado"], g["centrales"])
-            if r is not None and not r.empty:
-                resumenes.append(r)
-    
-        if not resumenes:
-            st.warning("No hay datos para graficar en este mes/año.")
-            st.stop()
+            # No usamos st.stop() aquí; solo mostramos el mensaje
+        else:
+            # Ruta relativa al app.py (repo)
+            BASE_DIR = os.path.join(os.path.dirname(__file__), "Potencia Activa")
+            ruta = os.path.join(BASE_DIR, str(AÑO), f"{MES}_{AÑO}.xlsx")
         
-        resumen_final = pd.concat(resumenes, ignore_index=True)
-    
-        # Graficar TODAS las centrales
-        for central, g in resumen_final.groupby("CENTRAL"):
-            g = g.copy()
-            g["X"] = g["COLUMNA"].astype(str).map(_to_minutes)
-            g = g.sort_values("X").reset_index(drop=True)
-    
-            if g.empty:
-                continue
-    
-            x_pos = range(len(g))
-    
-            fig = plt.figure(figsize=(14, 4))
-            plt.plot(x_pos, g["MIN_SIN_CERO"], label="MÍNIMO", linewidth=1)
-            plt.plot(x_pos, g["MAX"], label="MÁXIMO", linewidth=1)
-    
-            plt.title(f"{central}")
-            plt.xlabel("Hora")
-            plt.ylabel("MW")
-            plt.xticks(list(x_pos), g["COLUMNA"].tolist(), rotation=90, fontsize=7)
-            plt.legend()
-            plt.tight_layout()
-            
-            st.pyplot(fig, width="stretch")
-            plt.close(fig)
+            if not os.path.exists(ruta):
+                st.error(f"No existe el archivo: {MES}_{AÑO}.xlsx en Potencia Activa/{AÑO}/")
+                # Evitamos st.stop() para no detener toda la app
+            else:
+                # Cargar excel
+                df = cargar_df_potencia_activa(ruta)
+        
+                # Columnas HH:MM
+                pat_hora = re.compile(r"^\d{1,2}:\d{2}$")
+                time_cols = [c for c in df.columns if isinstance(c, str) and pat_hora.match(c)]
+                time_cols = sorted(time_cols, key=_to_minutes)
+        
+                if not time_cols:
+                    st.error("No se detectaron columnas de hora HH:MM en el Excel.")
+                else:
+                    # Config centrales
+                    solares_normales = ["C.S. MATARANI", "C.S. CLEMESÍ"]
+                    solares_sumar_por_fecha = ["C.S. SAN MARTIN SOLAR", "C.S. RUBI", "C.S. SUNNY"]
+        
+                    eolicas_normales = ["C.E. CUPISNIQUE", "C.E. SAN JUAN", "C.E. TRES HERMANAS"]
+                    eolicas_grupos_unificar = [
+                        {"nombre_unificado": "C.E. WAYRA",
+                        "centrales": ["C.E. WAYRA EXTENSION", "C.E. WAYRA I"]},
+                        {"nombre_unificado": "C.E. PUNTA LOMITAS",
+                        "centrales": ["C.E. PUNTA LOMITAS", "C.E. PUNTA LOMITAS_EXP"]},
+                    ]
+        
+                    def procesar_individual(nombre_central: str):
+                        df_f = df[df["CENTRAL"].astype(str).map(norm_txt) == norm_txt(nombre_central)].copy()
+                        if df_f.empty:
+                            return None
+                        bloque = df_f[time_cols].apply(pd.to_numeric, errors="coerce")
+                        return resumen_desde_bloque(nombre_central, bloque)
+        
+                    def procesar_sumar_por_fecha(nombre_central: str):
+                        df_f = df[df["CENTRAL"].astype(str).map(norm_txt) == norm_txt(nombre_central)].copy()
+                        if df_f.empty:
+                            return None
+        
+                        fechas = pd.to_datetime(df_f[COL_FECHA].astype(str), errors="coerce", dayfirst=True).dt.normalize()
+                        bloque = df_f[time_cols].apply(pd.to_numeric, errors="coerce")
+                        bloque_sum = bloque.groupby(fechas).sum(min_count=1)
+                        bloque_sum = bloque_sum.loc[~pd.isna(bloque_sum.index)]
+                        bloque_sum.columns = time_cols
+        
+                        return resumen_desde_bloque(nombre_central, bloque_sum)
+        
+                    def procesar_grupo_unificado(nombre_unificado: str, centrales: list[str]):
+                        df_g = df[df["CENTRAL"].astype(str).map(norm_txt).isin(map(norm_txt, centrales))].copy()
+                        if df_g.empty:
+                            return None
+        
+                        fechas = pd.to_datetime(df_g[COL_FECHA].astype(str), errors="coerce", dayfirst=True).dt.normalize()
+                        bloque = df_g[time_cols].apply(pd.to_numeric, errors="coerce")
+                        bloque_sum = bloque.groupby(fechas).sum(min_count=1)
+                        bloque_sum = bloque_sum.loc[~pd.isna(bloque_sum.index)]
+                        bloque_sum.columns = time_cols
+        
+                        return resumen_desde_bloque(nombre_unificado, bloque_sum)
+        
+                    # Ejecutar
+                    resumenes = []
+        
+                    for c in solares_normales:
+                        r = procesar_individual(c)
+                        if r is not None and not r.empty:
+                            resumenes.append(r)
+        
+                    for c in solares_sumar_por_fecha:
+                        r = procesar_sumar_por_fecha(c)
+                        if r is not None and not r.empty:
+                            resumenes.append(r)
+        
+                    for c in eolicas_normales:
+                        r = procesar_individual(c)
+                        if r is not None and not r.empty:
+                            resumenes.append(r)
+        
+                    for g in eolicas_grupos_unificar:
+                        r = procesar_grupo_unificado(g["nombre_unificado"], g["centrales"])
+                        if r is not None and not r.empty:
+                            resumenes.append(r)
+        
+                    if not resumenes:
+                        st.warning("No hay datos para graficar en este mes/año.")
+                    else:
+                        resumen_final = pd.concat(resumenes, ignore_index=True)
+        
+                        # Graficar TODAS las centrales
+                        for central, g in resumen_final.groupby("CENTRAL"):
+                            g = g.copy()
+                            g["X"] = g["COLUMNA"].astype(str).map(_to_minutes)
+                            g = g.sort_values("X").reset_index(drop=True)
+        
+                            if g.empty:
+                                continue
+        
+                            x_pos = range(len(g))
+        
+                            fig = plt.figure(figsize=(14, 4))
+                            plt.plot(x_pos, g["MIN_SIN_CERO"], label="MÍNIMO", linewidth=1)
+                            plt.plot(x_pos, g["MAX"], label="MÁXIMO", linewidth=1)
+        
+                            plt.title(f"{central}")
+                            plt.xlabel("Hora")
+                            plt.ylabel("MW")
+                            plt.xticks(list(x_pos), g["COLUMNA"].tolist(), rotation=90, fontsize=7)
+                            plt.legend()
+                            plt.tight_layout()
+                            
+                            st.pyplot(fig, width="stretch")
+                            plt.close(fig) 
             
     with tab10:
         # =========================================================
@@ -3826,7 +3825,152 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 st.info("Selecciona las fechas en el panel lateral y presiona **Generar** para ejecutar este análisis.")
         except Exception:
             st.error("Ocurrió un error al generar el reporte de Electro Oriente.")
-
+    
+    with tab11:
+        # =========================================================
+        # ======================= TERMICAS ======================== 
+        # =========================================================
+        st.markdown("### TÉRMICAS")
+        
+        def generar_grafico_termico_plotly(titulo, grupos,
+                                   pdo_res, rdo_letras, work_dir,
+                                   fecha_str, ddmm,
+                                   stem_term="Termica - Despacho (MW)"):
+            
+            series = {}
+            
+            # --- PDO ---
+            df_pdo = cargar_dataframe(pdo_res, stem_term)
+            vals = rellenar_hasta_48(totales_rer(df_pdo, grupos))
+            if vals:
+                series["PDO"] = vals
+        
+            # --- RDO A-E ---
+            for letra in rdo_letras:
+                rdo_path = (
+                    work_dir /
+                    f"RDO_{letra}_{fecha_str}" /
+                    f"YUPANA_{ddmm}{letra}" /
+                    "RESULTADOS"
+                )
+                df_rdo = cargar_dataframe(rdo_path, stem_term)
+                vals = rellenar_hasta_48(totales_rer(df_rdo, grupos))
+                if vals:
+                    series[f"RDO {letra}"] = vals
+        
+            if not series:
+                st.warning(f"No hay datos para {titulo}")
+                return
+        
+            # --------- Gráfico Plotly ---------
+            fig = go.Figure()
+            xs = list(range(48))
+            y_all = []
+        
+            for name, values in series.items():
+                y = []
+        
+                # --- convertir 0 → None (para cortar la línea) ---
+                for v in values:
+                    if v is None or (isinstance(v, float) and math.isnan(v)):
+                        y.append(None)
+                    elif v == 0:
+                        y.append(None)     # NO dibujar ceros
+                    else:
+                        y.append(v)
+        
+                # si toda la curva es None, no la graficamos
+                if all(v is None for v in y):
+                    continue
+        
+                y_all.extend([v for v in y if v is not None])
+        
+                fig.add_trace(go.Scatter(
+                    x=xs,
+                    y=y,
+                    mode='lines+markers',
+                    name=name,
+                    line=dict(width=2)
+                ))
+        
+            if not y_all:
+                st.warning(f"{titulo}: todos los valores fueron cero")
+                return
+            
+            y_min = max(0, math.floor(min(y_all)) - 10)
+            y_max = math.ceil(max(y_all)) + 10
+            fig.update_yaxes(range=[y_min, y_max])
+        
+            fig.update_layout(
+                title_text=titulo,
+                # xaxis_title="Hora",
+                yaxis_title="MW",
+                xaxis=dict(
+                    tickmode='array',
+                    tickvals=ticks_pos,
+                    ticktext=ticks_lbl,
+                    tickangle=0
+                ),
+                hovermode="x unified",
+            )
+        
+            st.plotly_chart(fig, width="stretch")
+            
+        # ===============================
+        #   LISTA DE GRÁFICOS TÉRMICOS
+        # ===============================
+        graficos_termicos = [
+            ("CT RESERVA FRÍA ILO", [
+                "RFILO2TG1D2","RFILO2TG2D2","RFILO2TG3D2"
+            ]),
+            
+            ("CT ILO 4", [
+                "CTNEPITG43D2","CTNEPITG42D2","CTNEPITG41D2"
+            ]),
+            
+            ("CT PUERTOBRAVO", [
+                "PTOBRVO TG3  D2","PTOBRVO TG1  D2","PTOBRVO TG4  D2",
+                "PTOBRVO TG2  D2"
+            ]),
+            
+            ("CT MALACAS", [
+                "MALACAS3 TG 5  GAS"
+            ]),
+            
+            ("CT RECKA", [
+                "RECKA TG1  D2"
+            ]),
+            
+            ("CT ETEN", [
+                "RF ETEN TG1  D2","RF ETEN TG2  D2"
+            ]),
+            
+            ("CT FENIX", [
+                "FENIXGT12GAS","FENIXCCGT12GAS","FENIXGT11GAS",
+                "FENIXCCGT11GAS","FENIXCCGT11GT12GAS","FENIXCCGT11GT12D2",
+                "FENIX GT12  D2","FENIX GT11  D2",
+                "FENIX CCOMB GT12  D2","FENIX CCOMB GT11  D2"
+            ]),
+            
+            ("CT VENTANILLA", [
+                "VENT3D2","VENT4D2","VENT3GAS","VENT4GAS",
+                "VENTCC3GAS","VENTCC4GAS","VENTCC34GAS","VENTCC3GASFD",
+                "VENTCC4GASFD","VENTCC34GASFD"
+                ]),
+            
+            ("CT SANTA ROSA", [
+                "STA ROSA UTI 5  D2","STA ROSA WEST TG7  D2 CON H2O","STA ROSA UTI 6  D2"
+                ])
+        ]
+        
+        # Ejecutar gráficos térmicos
+        for titulo, grupos in graficos_termicos:
+            generar_grafico_termico_plotly(
+            titulo, grupos,
+            pdo_res, rdo_letras, work_dir,
+            fecha_str, ddmm
+        )
+     
 # -----------------------------------------------------------------------------
 # ------------------------------------ PDF ------------------------------------
 # -----------------------------------------------------------------------------        
