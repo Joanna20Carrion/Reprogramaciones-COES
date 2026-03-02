@@ -3828,149 +3828,129 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
     
     with tab11:
         # =========================================================
-        # ======================= TERMICAS ======================== 
+        # ======================= TÉRMICAS ======================== 
         # =========================================================
         st.markdown("### TÉRMICAS")
-        
-        def generar_grafico_termico_plotly(titulo, grupos,
-                                   pdo_res, rdo_letras, work_dir,
-                                   fecha_str, ddmm,
-                                   stem_term="Termica - Despacho (MW)"):
-            
-            series = {}
-            
-            # --- PDO ---
-            df_pdo = cargar_dataframe(pdo_res, stem_term)
-            vals = rellenar_hasta_48(totales_rer(df_pdo, grupos))
-            if vals:
-                series["PDO"] = vals
-        
-            # --- RDO A-E ---
+        try:
+            fecha_actual = fecha_reporte if 'fecha_reporte' in locals() else fin
+        except NameError:
+            fecha_actual = datetime.today()
+    
+        y, m, d = fecha_actual.year, fecha_actual.month, fecha_actual.day
+        M = MES_TXT[m - 1]
+    
+        # --- Funciones auxiliares ---
+        def descargar_zip_a_bytes(url):
+            try:
+                r = requests.get(url, timeout=40)
+                if r.status_code != 200 or not r.content.startswith(b"PK"):
+                    return None
+                return r.content
+            except Exception:
+                return None
+    
+        def leer_termica_csv_desde_zipbytes(zip_bytes):
+            try:
+                with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+                    name = next((n for n in zf.namelist()
+                                 if "Termica - Despacho" in n and n.lower().endswith(".csv")), None)
+                    if not name:
+                        return None, None
+                    with zf.open(name) as f:
+                        return pd.read_csv(f, encoding="latin1"), name
+            except Exception:
+                return None, None
+    
+        def suma_unidades_por_fila(df, unidades):
+            if df is None or df.empty:
+                return None, []
+            cols = [c for c in df.columns if any(u in str(c).upper() for u in unidades)]
+            if not cols:
+                return None, []
+            df_num = df[cols].apply(pd.to_numeric, errors="coerce")
+            return df_num.sum(axis=1, numeric_only=True).fillna(0).tolist(), cols
+    
+        # --- Procesar una central y graficar ---
+        def procesar_central(nombre, unidades, y, m, d, M, rdo_letras):
+            st.markdown(f"#### {nombre}")
+            resultados = []
+    
             for letra in rdo_letras:
-                rdo_path = (
-                    work_dir /
-                    f"RDO_{letra}_{fecha_str}" /
-                    f"YUPANA_{ddmm}{letra}" /
-                    "RESULTADOS"
-                )
-                df_rdo = cargar_dataframe(rdo_path, stem_term)
-                vals = rellenar_hasta_48(totales_rer(df_rdo, grupos))
-                if vals:
-                    series[f"RDO {letra}"] = vals
-        
-            if not series:
-                st.warning(f"No hay datos para {titulo}")
-                return
-        
-            # --------- Gráfico Plotly ---------
-            fig = go.Figure()
-            xs = list(range(48))
-            y_all = []
-        
-            for name, values in series.items():
-                y = []
-        
-                # --- convertir 0 → None (para cortar la línea) ---
-                for v in values:
-                    if v is None or (isinstance(v, float) and math.isnan(v)):
-                        y.append(None)
-                    elif v == 0:
-                        y.append(None)     # NO dibujar ceros
-                    else:
-                        y.append(v)
-        
-                # si toda la curva es None, no la graficamos
-                if all(v is None for v in y):
+                url = base_rdo.format(y=y, m=f"{m:02d}", M=M, d=f"{d:02d}", letra=letra)
+                zip_bytes = descargar_zip_a_bytes(url)
+                if not zip_bytes:
                     continue
-        
-                y_all.extend([v for v in y if v is not None])
-        
-                fig.add_trace(go.Scatter(
-                    x=xs,
-                    y=y,
-                    mode='lines+markers',
-                    name=name,
-                    line=dict(width=2)
-                ))
-        
-            if not y_all:
-                st.warning(f"{titulo}: todos los valores fueron cero")
+                df_term, _ = leer_termica_csv_desde_zipbytes(zip_bytes)
+                vals, cols = suma_unidades_por_fila(df_term, [u.upper() for u in unidades])
+                if vals is None:
+                    continue
+                resultados.append((letra, vals))
+    
+            if not resultados:
+                st.warning(f"No se encontraron datos válidos para {nombre}")
                 return
-            
-            y_min = max(0, math.floor(min(y_all)) - 10)
-            y_max = math.ceil(max(y_all)) + 10
-            fig.update_yaxes(range=[y_min, y_max])
-        
-            fig.update_layout(
-                title_text=titulo,
-                # xaxis_title="Hora",
-                yaxis_title="MW",
-                xaxis=dict(
-                    tickmode='array',
-                    tickvals=ticks_pos,
-                    ticktext=ticks_lbl,
-                    tickangle=0
-                ),
-                hovermode="x unified",
-            )
-        
-            st.plotly_chart(fig, width="stretch")
-            
-        # ===============================
-        #   LISTA DE GRÁFICOS TÉRMICOS
-        # ===============================
+    
+            # Fusionar en cascada
+            fusion = [0.0] * 48
+            for letra, vals in resultados:
+                n = len(vals)
+                if n > 48:
+                    vals = vals[:48]
+                    n = 48
+                start = 48 - n
+                for i in range(n):
+                    fusion[start + i] = vals[i]
+    
+            # Crear eje X según fecha del reporte
+            hora_base = datetime(y, m, d, 0, 30)
+            tiempos = [hora_base + timedelta(minutes=30 * i) for i in range(48)]
+            etiquetas = [t.strftime("%H:%M") for t in tiempos]
+    
+            # Graficar
+            fig, ax = plt.subplots(figsize=(10, 4))
+            ax.plot(tiempos, fusion, marker='o', markersize=3, linewidth=2, color='blue')
+            ax.set_title(f"{nombre} - {d:02d}/{m:02d}/{y}", fontsize=11, fontweight='bold')
+            ax.set_ylabel("MW")
+            ax.set_xlabel("Hora")
+            ax.grid(True, linestyle="--", alpha=0.6)
+            ax.set_xticks(tiempos)
+            ax.set_xticklabels(etiquetas, rotation=90, fontsize=7)
+            plt.tight_layout()
+    
+            st.pyplot(fig, width="stretch")
+            plt.close(fig)
+    
+        # --- Lista de centrales ---
         graficos_termicos = [
-            ("CT RESERVA FRÍA ILO", [
-                "RFILO2TG1D2","RFILO2TG2D2","RFILO2TG3D2"
-            ]),
-            
-            ("CT ILO 4", [
-                "CTNEPITG43D2","CTNEPITG42D2","CTNEPITG41D2"
-            ]),
-            
-            ("CT PUERTOBRAVO", [
-                "PTOBRVO TG3  D2","PTOBRVO TG1  D2","PTOBRVO TG4  D2",
-                "PTOBRVO TG2  D2"
-            ]),
-            
-            ("CT MALACAS", [
-                "MALACAS3 TG 5  GAS"
-            ]),
-            
-            ("CT RECKA", [
-                "RECKA TG1  D2"
-            ]),
-            
-            ("CT ETEN", [
-                "RF ETEN TG1  D2","RF ETEN TG2  D2"
-            ]),
-            
+            ("CT RESERVA FRÍA ILO", ["RFILO2TG1D2","RFILO2TG2D2","RFILO2TG3D2"]),
+            ("CT ILO 4", ["CTNEPITG43D2","CTNEPITG42D2","CTNEPITG41D2"]),
+            ("CT PUERTOBRAVO", ["PTOBRVO TG3  D2","PTOBRVO TG1  D2","PTOBRVO TG4  D2","PTOBRVO TG2  D2"]),
+            ("CT MALACAS", ["MALACAS3 TG 5  GAS"]),
+            ("CT RECKA", ["RECKA TG1  D2"]),
+            ("CT ETEN", ["RF ETEN TG1  D2","RF ETEN TG2  D2"]),
             ("CT FENIX", [
                 "FENIXGT12GAS","FENIXCCGT12GAS","FENIXGT11GAS",
                 "FENIXCCGT11GAS","FENIXCCGT11GT12GAS","FENIXCCGT11GT12D2",
                 "FENIX GT12  D2","FENIX GT11  D2",
                 "FENIX CCOMB GT12  D2","FENIX CCOMB GT11  D2"
             ]),
-            
             ("CT VENTANILLA", [
                 "VENT3D2","VENT4D2","VENT3GAS","VENT4GAS",
-                "VENTCC3GAS","VENTCC4GAS","VENTCC34GAS","VENTCC3GASFD",
-                "VENTCC4GASFD","VENTCC34GASFD"
-                ]),
-            
+                "VENTCC3GAS","VENTCC4GAS","VENTCC34GAS",
+                "VENTCC3GASFD","VENTCC4GASFD","VENTCC34GASFD"
+            ]),
             ("CT SANTA ROSA", [
                 "STA ROSA UTI 5  D2","STA ROSA WEST TG7  D2 CON H2O","STA ROSA UTI 6  D2"
-                ])
+            ])
         ]
-        
-        # Ejecutar gráficos térmicos
-        for titulo, grupos in graficos_termicos:
-            generar_grafico_termico_plotly(
-            titulo, grupos,
-            pdo_res, rdo_letras, work_dir,
-            fecha_str, ddmm
-        )
-     
+    
+        # --- Ejecutar cuando el usuario presione el botón ---
+        if gen_generar:
+            for nombre, unidades in graficos_termicos:
+                procesar_central(nombre, unidades, y, m, d, M, rdo_letras)
+        else:
+            st.info("Presiona **Generar** para ver las gráficas térmicas fusionadas.")
+                 
 # -----------------------------------------------------------------------------
 # ------------------------------------ PDF ------------------------------------
 # -----------------------------------------------------------------------------        
