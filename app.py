@@ -1273,8 +1273,9 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             barras_solar = [
                 "MAJES","TACNASOLAR","PANAMERICANASOLAR","MOQUEGUASOLAR",
                 "CS RUBI","INTIPAMPA","CS INTIPAMPA EXPANSION","CSEXPANSIONINTIPAMPA",
-                "CS YARUCAYA","CSF YARUCAYA", "CSCLEMESI","CS CARHUAQUERO",
-                "CS EL CARMEN","CS MATARANI", "CS SAN MARTIN","CSSUNNY", "CSSUNNYEXP","LAGRINGAV"   
+                "YARUCAYA","CS YARUCAYA","CSF YARUCAYA", "CSCLEMESI","CS CARHUAQUERO",
+                "EL CARMEN","CS EL CARMEN","CS MATARANI", "CS SAN MARTIN","CSSUNNY", "CSSUNNYEXP",
+                "LAGRINGAV","CSSUNNYEXPANSION","CSCOENERGY"
             ]
             # Actual
             series_sol = {}
@@ -3015,7 +3016,34 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 with cols[i]: 
                     st.pyplot(fig)
                 plt.close(fig)
-    
+        
+        def fusionar_rdos(series_dict):
+
+            if "A" not in series_dict:
+                return None
+        
+            fusion = series_dict["A"].copy()
+        
+            for letra in sorted(series_dict.keys()):
+                if letra == "A":
+                    continue
+        
+                vals = series_dict[letra]
+        
+                inicio = None
+                for i,v in enumerate(vals):
+                    if v != 0:
+                        inicio = i
+                        break
+        
+                if inicio is None:
+                    continue
+        
+                for i in range(inicio,48):
+                    fusion[i] = vals[i]
+        
+            return fusion
+        
         # =========================================================
         # ======================== SOLAR ==========================
         # =========================================================
@@ -3047,23 +3075,66 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
     
             # HISTÓRICO RPO A
             series_sol_dia={}
+
             for k in range((fin - ini).days + 1):
+            
                 f = ini + timedelta(days=k)
-                yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d"); M_TXT = MES_TXT[f.month-1]
-                url_zip = base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra="A")
-                carpeta = work_dir / f"RDO_A_{yk}{mk}{dk}"
-                resultados = carpeta / f"YUPANA_{dk}{mk}A" / "RESULTADOS"
-                if not resultados.exists():
+                yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d")
+                M_TXT = MES_TXT[f.month-1]
+            
+                rdos = {}
+            
+                # ===== Leer todos los RDO disponibles =====
+                for letra in rdo_letras:
+            
+                    url_zip = base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra=letra)
+            
+                    carpeta = work_dir / f"RDO_{letra}_{yk}{mk}{dk}"
+                    resultados = carpeta / f"YUPANA_{dk}{mk}{letra}" / "RESULTADOS"
+            
+                    if not resultados.exists():
+                        try:
+                            r = requests.get(url_zip, timeout=40)
+                            r.raise_for_status()
+            
+                            with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+                                zf.extractall(path=carpeta)
+            
+                        except Exception:
+                            continue
+                            
                     try:
-                        r = requests.get(url_zip, timeout=40); r.raise_for_status()
-                        with zipfile.ZipFile(io.BytesIO(r.content)) as zf: zf.extractall(path=carpeta)
+                        df_sol = cargar_dataframe(resultados, stem_rer)
+                        
+                        vals = rellenar_hasta_48(
+                            totales_rer(df_sol, [x.upper() for x in barras_solar])
+                        )
+            
+                        if vals and any(v != 0 for v in vals):
+                            rdos[letra] = vals[:48]
+            
                     except Exception:
                         continue
-                df_sol = cargar_dataframe(resultados, stem_rer)
-                vals   = rellenar_hasta_48(totales_rer(df_sol, [x.upper() for x in barras_solar]))
-                if vals and any(v != 0 for v in vals):
-                    series_sol_dia[f.strftime("%Y-%m-%d")] = vals
-    
+            
+                # ===== Fusión A → B → C =====
+                if rdos:
+            
+                    letras_orden = sorted(rdos.keys())
+            
+                    serie_final = rdos[letras_orden[0]].copy()
+            
+                    for letra in letras_orden[1:]:
+            
+                        nueva = rdos[letra]
+            
+                        for i in range(48):
+                            if nueva[i] != 0:
+                                serie_final[i:] = nueva[i:]
+                                break
+            
+                    if any(v != 0 for v in serie_final):
+                        series_sol_dia[f.strftime("%Y-%m-%d")] = serie_final
+                        
             # Fusión + Promedio + Máximo
             series_solar_7={}
             cur = ini
@@ -3208,31 +3279,71 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     pass
                 cur += timedelta(days=1)
                 
-            # ---------- HISTÓRICO RPO A ----------
+            # ---------- HISTÓRICO RPO (A → B → C → D → E → F) ----------
             series_term_dia = {}
             stem_term = "Termica - Despacho (MW)"
-        
+            
             for k in range((fin - ini).days + 1):
+            
                 f = ini + timedelta(days=k)
                 yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d")
                 M_TXT = MES_TXT[f.month-1]
-        
-                url_zip = base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra="A")
-                carpeta = work_dir / f"RDO_A_{yk}{mk}{dk}"
-                resultados = carpeta / f"YUPANA_{dk}{mk}A" / "RESULTADOS"
-        
-                if not resultados.exists():
+            
+                rdos = {}
+            
+                # ===== Leer todos los RDO disponibles =====
+                for letra in rdo_letras:
+            
+                    url_zip = base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra=letra)
+            
+                    carpeta = work_dir / f"RDO_{letra}_{yk}{mk}{dk}"
+                    resultados = carpeta / f"YUPANA_{dk}{mk}{letra}" / "RESULTADOS"
+            
+                    if not resultados.exists():
+                        try:
+                            r = requests.get(url_zip, timeout=40)
+                            r.raise_for_status()
+            
+                            with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+                                zf.extractall(path=carpeta)
+            
+                        except Exception:
+                            continue
+            
                     try:
-                        r = requests.get(url_zip, timeout=40); r.raise_for_status()
-                        with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
-                            zf.extractall(path=carpeta)
+                        df_term = cargar_dataframe(resultados, stem_term)
+                    
+                        if df_term is None or df_term.empty:
+                            continue
+                    
+                        # eliminar columna índice si existe
+                        cols_validas = [c for c in df_term.columns if "ETAPA" not in str(c).upper()]
+                        
+                        df_num = df_term[cols_validas].apply(pd.to_numeric, errors="coerce")
+                        
+                        vals = df_num.sum(axis=1).fillna(0).tolist()
+                        
+                        if vals and any(v != 0 for v in vals):
+                            rdos[letra] = vals[:48]
+                    
                     except Exception:
                         continue
-        
-                df_term = cargar_dataframe(resultados, stem_term)
-                vals = rellenar_hasta_48(totales_rer(df_term, grupos_gas))
-                if vals and any(v != 0 for v in vals):
-                    series_term_dia[f.strftime("%Y-%m-%d")] = vals
+                    
+                # ===== Fusión A → B → C → D → E → F =====
+                if rdos:
+                
+                    letras_orden = sorted(rdos.keys())
+                
+                    serie_final = rdos[letras_orden[0]].copy()
+                
+                    for letra in letras_orden[1:]:
+                        nueva = rdos[letra]
+                        n = len(nueva)
+                        inicio = 48 - n
+                        serie_final[inicio:] = nueva[:]
+                        
+                    if any(v != 0 for v in serie_final):
+                        series_term_dia[f.strftime("%Y-%m-%d")] = serie_final
                     
             # ---------- FUSIÓN IEOD + RPO A ----------
             series_term_7 = {}
@@ -3255,6 +3366,10 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             lbl_fin = fin.strftime("%Y-%m-%d")
             if lbl_fin in series_term_dia:
                 series_term_7[lbl_fin] = series_term_dia[lbl_fin][:48]
+            elif series_term_dia:
+                # usar el último RDO disponible
+                ultimo = sorted(series_term_dia.keys())[-1]
+                series_term_7[lbl_fin] = series_term_dia[ultimo][:48]
                 
             # ---------- GRÁFICO PRINCIPAL HISTÓRICO ----------
             if series_term_7:
