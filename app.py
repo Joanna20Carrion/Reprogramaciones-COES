@@ -2762,26 +2762,75 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     pass
                 cur += timedelta(days=1)
                 
-            # HISTÓRICO RPO A
-            series_dia = {}
+            # HISTÓRICO RDO (fusión A → B → C)
+            series_dem_rdo = {}
+            
             for k in range((fin - ini).days + 1):
+            
                 f = ini + timedelta(days=k)
-                yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d"); M_TXT = MES_TXT[f.month-1]
-                url_zip = base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra="A")
-                carpeta = work_dir / f"RDO_A_{yk}{mk}{dk}"
-                resultados = carpeta / f"YUPANA_{dk}{mk}A" / "RESULTADOS"
-                if not resultados.exists():
+            
+                rdos = {}
+            
+                for letra in ["A","B","C"]:
+            
                     try:
-                        r = requests.get(url_zip, timeout=40); r.raise_for_status()
-                        with zipfile.ZipFile(io.BytesIO(r.content)) as zf: zf.extractall(path=carpeta)
+            
+                        yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d")
+                        M_TXT = MES_TXT[f.month-1]
+            
+                        url_zip = base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra=letra)
+            
+                        carpeta = work_dir / f"RDO_{letra}_{yk}{mk}{dk}"
+                        resultados = carpeta / f"YUPANA_{dk}{mk}{letra}" / "RESULTADOS"
+            
+                        if not resultados.exists():
+            
+                            r = requests.get(url_zip, timeout=40)
+                            r.raise_for_status()
+            
+                            with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+                                zf.extractall(path=carpeta)
+            
+                        vals_h = rellenar_hasta_48(
+                            fila_sin_primer_valor(cargar_dataframe(resultados, archivos_dem["HIDRO"]))
+                        )
+            
+                        vals_t = rellenar_hasta_48(
+                            fila_sin_primer_valor(cargar_dataframe(resultados, archivos_dem["TERMICA"]))
+                        )
+            
+                        vals_r = rellenar_hasta_48(
+                            fila_sin_primer_valor(cargar_dataframe(resultados, archivos_dem["RER"]))
+                        )
+            
+                        tot = suma_elementos(vals_h, vals_t, vals_r)
+            
+                        if tot and any(v != 0 for v in tot):
+                            rdos[letra] = tot
+            
                     except Exception:
-                        continue
-                vals_h = rellenar_hasta_48(fila_sin_primer_valor(cargar_dataframe(resultados, archivos_dem["HIDRO"])))
-                vals_t = rellenar_hasta_48(fila_sin_primer_valor(cargar_dataframe(resultados, archivos_dem["TERMICA"])))
-                vals_r = rellenar_hasta_48(fila_sin_primer_valor(cargar_dataframe(resultados, archivos_dem["RER"])))
-                if any((vals_h, vals_t, vals_r)):
-                    series_dia[f.strftime("%Y-%m-%d")] = suma_elementos(vals_h, vals_t, vals_r)
-    
+                        pass
+            
+            
+                # ===== Fusión A → B → C =====
+                if rdos:
+            
+                    letras_orden = sorted(rdos.keys())
+            
+                    serie_final = rdos[letras_orden[0]].copy()
+            
+                    for letra in letras_orden[1:]:
+            
+                        nueva = rdos[letra]
+            
+                        for i in range(48):
+                            if nueva[i] != 0:
+                                serie_final[i:] = nueva[i:]
+                                break
+            
+                    if any(v != 0 for v in serie_final):
+                        series_dem_rdo[f.strftime("%Y-%m-%d")] = serie_final
+            
             # Fusión, Promedio, Máximo
             series_dem_7={}
             cur = ini
@@ -2798,8 +2847,10 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                         pass
                 cur += timedelta(days=1)
             lbl_fin = fin.strftime("%Y-%m-%d")
-            if lbl_fin in series_dia: series_dem_7[lbl_fin] = series_dia[lbl_fin][:48]
-    
+            
+            if lbl_fin in series_dem_rdo:
+                series_dem_7[lbl_fin] = series_dem_rdo[lbl_fin][:48]
+            
             if series_dem_7:
                 fechas_orden=[]; cur=ini
                 while cur<=fin:
