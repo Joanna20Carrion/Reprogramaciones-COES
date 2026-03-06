@@ -934,7 +934,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         try:
             barras_rer = ["CARPAPATA","LA JOYA","STACRUZ12","HUASAHUASI","RONCADOR","PURMACANA","NIMPERIAL","PIZARRAS",
                           "POECHOS2","POECHOS1","CANCHAYLLO","CHANCAY","RUCUY","RUNATULLOII","RUNATULLOIII","YANAPAMPA",
-                          "POTRERO","CH MARANON","YARUCAYA","CHHER1","CHANGELI","CHANGELII","CHANGELIII","8AGOSTO","RENOVANDESH1",
+                          "POTRERO","CH MARANON","YARUCAYA","CHHER1","CHANGELI","CHANGELII","CHANGELIII","8AGOSTO","8/08/2026","RENOVANDESH1",
                           "CH RENOVANDES","CH MANTA","SANTA ROSA 1","SANTA ROSA 2","TUPURI","CH HUALLIN"]
             stem_hidro = "Hidro - Despacho (MW)"
             stem_rer   = "Rer y No COES - Despacho (MW)"
@@ -1129,7 +1129,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 vals_rdo = rellenar_hasta_48(totales_rer(df_rdo, [x.upper() for x in barras_eol]))
                 if vals_rdo:
                     series_rer[f"RDO {letra}"] = vals_rdo
-        
+            
             # EÓLICA (MW) — Línea
             if series_rer:
                 fig, ax = plt.subplots(figsize=(11, 5))
@@ -2456,13 +2456,40 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         except Exception:
             pass
         
-    with tab6:    
+    with tab6:
+        def fusionar_rdos(series_dict):
+
+            if "A" not in series_dict:
+                return None
+        
+            fusion = series_dict["A"].copy()
+        
+            for letra in sorted(series_dict.keys()):
+                if letra == "A":
+                    continue
+        
+                vals = series_dict[letra]
+        
+                inicio = None
+                for i,v in enumerate(vals):
+                    if v != 0:
+                        inicio = i
+                        break
+        
+                if inicio is None:
+                    continue
+        
+                for i in range(inicio,48):
+                    fusion[i] = vals[i]
+        
+            return fusion
+        
         # =========================================================
         # ======================== HIDRO ==========================
         # =========================================================
         st.markdown("### HIDRO")
         hidro_figs = []
-    
+        
         # H. Pasada vs H. Regulación
         try:
             def _norm(txt):
@@ -2521,40 +2548,93 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         except Exception as e:
             st.warning(f"IEOD histórico no disponible: {e}")
             
-        # Histórico HIDRO de RPO A
-        try:
-            series_dia={}; dias=(fin-ini).days+1
-            stem_hidro = "Hidro - Despacho (MW)"; stem_rer="Rer y No COES - Despacho (MW)"
-            barras_rer_up = ["CARPAPATA","LA JOYA","STACRUZ12","HUASAHUASI","RONCADOR","PURMACANA","NIMPERIAL","PIZARRAS",
-                             "POECHOS2","CANCHAYLLO","CHANCAY","RUCUY","RUNATULLOII","RUNATULLOIII","YANAPAMPA","POTRERO",
-                             "CH MARANON","YARUCAYA","CHHER1","CHANGELI","CHANGELII","CHANGELIII","8AGOSTO","RENOVANDESH1",
-                             "EL CARMEN","CH MANTA","SANTA ROSA 1","SANTA ROSA 2","TUPURI","CH HUALLIN"]
-            for k in range(dias):
-                f = ini + timedelta(days=k)
-                yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d"); M_TXT = MES_TXT[f.month-1]
-                url_zip = base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra="A")
-                carpeta = work_dir / f"RDO_A_{yk}{mk}{dk}"
-                resultados = carpeta / f"YUPANA_{dk}{mk}A" / "RESULTADOS"
+        # HISTÓRICO RDO (A → B → C) para HIDRO
+        series_hidro_rdo = {}
+        
+        for k in range((fin - ini).days + 1):
+        
+            f = ini + timedelta(days=k)
+            yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d")
+            M_TXT = MES_TXT[f.month-1]
+        
+            rdos = {}
+        
+            for letra in rdo_letras:
+        
+                url_zip = base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra=letra)
+        
+                carpeta = work_dir / f"RDO_{letra}_{yk}{mk}{dk}"
+                resultados = carpeta / f"YUPANA_{dk}{mk}{letra}" / "RESULTADOS"
+        
                 if not resultados.exists():
                     try:
-                        r = requests.get(url_zip, timeout=40); r.raise_for_status()
-                        with zipfile.ZipFile(io.BytesIO(r.content)) as zf: zf.extractall(path=carpeta)
+                        r = requests.get(url_zip, timeout=40)
+                        r.raise_for_status()
+        
+                        with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+                            zf.extractall(path=carpeta)
+        
                     except Exception:
                         continue
-                th = rellenar_hasta_48(totales_hidro(cargar_dataframe(resultados, stem_hidro)))
-                tr = rellenar_hasta_48(totales_rer (cargar_dataframe(resultados, stem_rer), [x.upper() for x in barras_rer_up]))
-                if th and tr: series_dia[f.strftime("%Y-%m-%d")] = suma_elementos(th, tr)
-        except Exception:
-            pass
+        
+                try:
+        
+                    th = rellenar_hasta_48(
+                        totales_hidro(cargar_dataframe(resultados, stem_hidro))
+                    )
+        
+                    tr = rellenar_hasta_48(
+                        totales_rer(
+                            cargar_dataframe(resultados, stem_rer),
+                            [x.upper() for x in barras_rer]
+                        )
+                    )
+        
+                    if th and tr:
+        
+                        vals = suma_elementos(th, tr)
+        
+                        if any(v != 0 for v in vals):
+                            rdos[letra] = vals[:48]
+        
+                except Exception:
+                    continue
+
+            # ===== Fusión A → B → C =====
+            if rdos:
+        
+                letras_orden = sorted(rdos.keys())
+        
+                serie_final = rdos[letras_orden[0]].copy()
+        
+                for letra in letras_orden[1:]:
+        
+                    nueva = rdos[letra]
+        
+                    for i in range(48):
+                        if nueva[i] != 0:
+                            serie_final[i:] = nueva[i:]
+                            break
+                    
+                # ===== Fusión A → B → C =====
+                if rdos:
+                    letras_orden = sorted(rdos.keys())
+                    serie_final = rdos[letras_orden[0]].copy()
+                
+                    for letra in letras_orden[1:]:            
+                        nueva = rdos[letra]
+                        for i in range(48):
+                            if nueva[i] != 0:
+                                serie_final[i:] = nueva[i:]
+                                break
+                    
+                    if any(v != 0 for v in serie_final):
+                        series_hidro_rdo[f.strftime("%Y-%m-%d")] = serie_final
         
         # Fusión + Promedio + Máximo
         try:
             series_7={}
             stem_hidro = "Hidro - Despacho (MW)"; stem_rer="Rer y No COES - Despacho (MW)"
-            barras_rer_up = ["CARPAPATA","LA JOYA","STACRUZ12","HUASAHUASI","RONCADOR","PURMACANA","NIMPERIAL","PIZARRAS",
-                             "POECHOS2","CANCHAYLLO","CHANCAY","RUCUY","RUNATULLOII","RUNATULLOIII","YANAPAMPA","POTRERO",
-                             "CH MARANON","YARUCAYA","CHHER1","CHANGELI","CHANGELII","CHANGELIII","8AGOSTO","RENOVANDESH1",
-                             "EL CARMEN","CH MANTA","SANTA ROSA 1","SANTA ROSA 2","TUPURI","CH HUALLIN"]
             ini_ieod = ini; fin_ieod = fin - timedelta(days=1)
             dias_ieod = (fin_ieod - ini_ieod).days + 1 if fin_ieod >= ini_ieod else 0
             # IEOD
@@ -2581,17 +2661,12 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                         series_7[f.strftime("%Y-%m-%d")] = vals
                 except Exception:
                     continue
-            # RDO-A último día
-            f_last = fin; yk, mk, dk = f_last.year, f_last.strftime("%m"), f_last.strftime("%d"); M_TXT = MES_TXT[f_last.month-1]
-            carpeta = work_dir / f"RDO_A_{yk}{mk}{dk}"; resultados = carpeta / f"YUPANA_{dk}{mk}A" / "RESULTADOS"
-            if not resultados.exists():
-                try:
-                    r = requests.get(base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra="A"), timeout=40); r.raise_for_status()
-                    with zipfile.ZipFile(io.BytesIO(r.content)) as zf: zf.extractall(path=carpeta)
-                except Exception: pass
-            th = rellenar_hasta_48(totales_hidro(cargar_dataframe(resultados, stem_hidro)))
-            tr = rellenar_hasta_48(totales_rer (cargar_dataframe(resultados, stem_rer), [x.upper() for x in barras_rer_up]))
-            if th and tr: series_7[f_last.strftime("%Y-%m-%d")] = suma_elementos(th, tr)
+                
+            # Último día desde RDO (fusión A → B → C)
+            lbl_fin = fin.strftime("%Y-%m-%d")
+
+            if lbl_fin in series_hidro_rdo:
+                series_7[lbl_fin] = series_hidro_rdo[lbl_fin][:48]
     
             if series_7:
                 # Fusión líneas
@@ -2668,7 +2743,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 with cols[i]: 
                     st.pyplot(fig)
                 plt.close(fig)
-    
+                
         # =========================================================
         # ======================== DEMANDA ========================
         # =========================================================
@@ -2686,7 +2761,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 except Exception:
                     pass
                 cur += timedelta(days=1)
-            
+                
             # HISTÓRICO RPO A
             series_dia = {}
             for k in range((fin - ini).days + 1):
@@ -2826,24 +2901,62 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 except Exception:
                     pass
                 cur += timedelta(days=1)
-    
-            # HISTÓRICO RPO A
-            series_eol_dia={}
+                
+            # HISTÓRICO RDO (fusión A → B → C)
+            series_eol_rdo = {}
+            
             for k in range((fin - ini).days + 1):
+            
                 f = ini + timedelta(days=k)
-                yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d"); M_TXT = MES_TXT[f.month-1]
-                url_zip = base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra="A")
-                carpeta = work_dir / f"RDO_A_{yk}{mk}{dk}"
-                resultados = carpeta / f"YUPANA_{dk}{mk}A" / "RESULTADOS"
-                if not resultados.exists():
+            
+                rdos = {}
+            
+                for letra in ["A","B","C"]:
+            
                     try:
-                        r = requests.get(url_zip, timeout=40); r.raise_for_status()
-                        with zipfile.ZipFile(io.BytesIO(r.content)) as zf: zf.extractall(path=carpeta)
+                        yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d")
+                        M_TXT = MES_TXT[f.month-1]
+            
+                        url_zip = base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra=letra)
+            
+                        carpeta = work_dir / f"RDO_{letra}_{yk}{mk}{dk}"
+                        resultados = carpeta / f"YUPANA_{dk}{mk}{letra}" / "RESULTADOS"
+            
+                        if not resultados.exists():
+            
+                            r = requests.get(url_zip, timeout=40)
+                            r.raise_for_status()
+            
+                            with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+                                zf.extractall(path=carpeta)
+            
+                        df_rer = cargar_dataframe(resultados, stem_rer)
+            
+                        tot_eol = rellenar_hasta_48(
+                            totales_rer(df_rer, [x.upper() for x in barras_eol])
+                        )
+            
+                        if tot_eol and any(v != 0 for v in tot_eol):
+                            rdos[letra] = tot_eol
+            
                     except Exception:
-                        continue
-                df_rer = cargar_dataframe(resultados, stem_rer)
-                tot_eol = rellenar_hasta_48(totales_rer(df_rer, [x.upper() for x in barras_eol]))
-                if tot_eol: series_eol_dia[f.strftime("%Y-%m-%d")] = tot_eol
+                        pass
+            
+            
+                # ===== Fusión A → B → C =====
+                if rdos:
+                    letras_orden = sorted(rdos.keys())
+                    serie_final = rdos[letras_orden[0]].copy()
+            
+                    for letra in letras_orden[1:]:
+                        nueva = rdos[letra]
+                        for i in range(48):
+                            if nueva[i] != 0:
+                                serie_final[i:] = nueva[i:]
+                                break
+            
+                    if any(v != 0 for v in serie_final):
+                        series_eol_rdo[f.strftime("%Y-%m-%d")] = serie_final
     
             # Fusión + Promedio + Máximo
             series_eol_7={}
@@ -2860,8 +2973,12 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     except Exception:
                         pass
                 cur += timedelta(days=1)
+                
             lbl_fin = fin.strftime("%Y-%m-%d")
-            if lbl_fin in series_eol_dia: series_eol_7[lbl_fin] = series_eol_dia[lbl_fin][:48]
+
+            if lbl_fin in series_eol_rdo:
+                series_eol_7[lbl_fin] = series_eol_rdo[lbl_fin][:48]
+            
             if series_eol_7:
                 fechas_orden=[]; cur=ini
                 while cur<=fin:
@@ -2946,27 +3063,32 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                             pass
                         cur += timedelta(days=1)
     
-                    # Último día (fin) con RDO-A: dividir por barras (Norte/Centro)
+                    # Último día (fin) con RDO fusionado
                     try:
-                        f = fin
-                        yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d")
-                        M_TXT = MES_TXT[f.month-1]
-                        carpeta = work_dir / f"RDO_A_{yk}{mk}{dk}"
-                        resultados = carpeta / f"YUPANA_{dk}{mk}A" / "RESULTADOS"
-                        if not resultados.exists():
-                            r = requests.get(base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra="A"), timeout=40); r.raise_for_status()
-                            with zipfile.ZipFile(io.BytesIO(r.content)) as zf: zf.extractall(path=carpeta)
-    
-                        df_rer  = cargar_dataframe(resultados, stem_rer)
-                        NORTE   = {"PE TALARA","PE CUPISNIQUE","HUAMBOS","DUNA"}
-                        CENTRO  = set(x.upper() for x in barras_eol) - NORTE
-    
-                        vn = rellenar_hasta_48(totales_rer(df_rer, list(NORTE)))  or [0.0]*N_INTERVALOS
-                        vc = rellenar_hasta_48(totales_rer(df_rer, list(CENTRO))) or [0.0]*N_INTERVALOS
-    
-                        fechas.append(f.strftime("%Y-%m-%d"))
-                        prom_norte.append(sum(vn)/N_INTERVALOS)
-                        prom_centro.append(sum(vc)/N_INTERVALOS)
+                    
+                        lfin = fin.strftime("%Y-%m-%d")
+                    
+                        if lfin in series_eol_rdo:
+                    
+                            serie = series_eol_rdo[lfin]
+                    
+                            NORTE  = {"PE TALARA","PE CUPISNIQUE","HUAMBOS","DUNA"}
+                    
+                            # recalcular por barras usando el RDO final
+                            yk, mk, dk = fin.year, fin.strftime("%m"), fin.strftime("%d")
+                    
+                            carpeta = work_dir / f"RDO_C_{yk}{mk}{dk}"
+                            resultados = carpeta / f"YUPANA_{dk}{mk}C" / "RESULTADOS"
+                    
+                            df_rer = cargar_dataframe(resultados, stem_rer)
+                    
+                            vn = rellenar_hasta_48(totales_rer(df_rer, list(NORTE))) or [0.0]*48
+                            vc = [serie[i] - vn[i] for i in range(48)]
+                    
+                            fechas.append(lfin)
+                            prom_norte.append(sum(vn)/48)
+                            prom_centro.append(sum(vc)/48)
+                    
                     except Exception:
                         pass
                     
@@ -3016,33 +3138,6 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 with cols[i]: 
                     st.pyplot(fig)
                 plt.close(fig)
-        
-        def fusionar_rdos(series_dict):
-
-            if "A" not in series_dict:
-                return None
-        
-            fusion = series_dict["A"].copy()
-        
-            for letra in sorted(series_dict.keys()):
-                if letra == "A":
-                    continue
-        
-                vals = series_dict[letra]
-        
-                inicio = None
-                for i,v in enumerate(vals):
-                    if v != 0:
-                        inicio = i
-                        break
-        
-                if inicio is None:
-                    continue
-        
-                for i in range(inicio,48):
-                    fusion[i] = vals[i]
-        
-            return fusion
         
         # =========================================================
         # ======================== SOLAR ==========================
