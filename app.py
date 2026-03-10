@@ -2288,7 +2288,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     header=5,
                     engine="openpyxl"
                 )
-            
+                
                 # Lista completa de columnas térmicas del IEOD
                 cols_termicas = [
                     "GAS DE CAMISEA",
@@ -2338,12 +2338,12 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         try:
             series_term_dia = {}
             stem_term = "Termica - Despacho (MW)"
-        
+            
             for k in range((fin - ini).days + 1):
                 f = ini + timedelta(days=k)
                 yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d")
                 M_TXT = MES_TXT[f.month-1]
-        
+                
                 url_zip = base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra="A")
                 carpeta = work_dir / f"RDO_A_{yk}{mk}{dk}"
                 resultados = carpeta / f"YUPANA_{dk}{mk}A" / "RESULTADOS"
@@ -2675,6 +2675,9 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     lbl=cur.strftime("%Y-%m-%d")
                     if lbl in series_7: fechas_orden.append(lbl)
                     cur+=timedelta(days=1)
+                    
+                st.session_state["series_h"] = series_7
+                
                 fig, ax = plt.subplots(figsize=(12,6)); x_idx=list(range(48)); y_all=[]
                 for lbl in fechas_orden:
                     fobj = datetime.strptime(lbl, "%Y-%m-%d").date()
@@ -3024,11 +3027,13 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     except Exception:
                         pass
                 cur += timedelta(days=1)
-                
+            
             lbl_fin = fin.strftime("%Y-%m-%d")
 
             if lbl_fin in series_eol_rdo:
                 series_eol_7[lbl_fin] = series_eol_rdo[lbl_fin][:48]
+                
+            st.session_state["series_rer"] = series_eol_7
             
             if series_eol_7:
                 fechas_orden=[]; cur=ini
@@ -3170,7 +3175,8 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     if l in series_eol_7:
                         vals = [0 if (v is None or (isinstance(v,float) and math.isnan(v))) else float(v) for v in series_eol_7[l][:48]]
                         maximos.append(sum(vals)/2.0); fechas_lbl.append(l)
-                    cur += timedelta(days=1)
+                    cur += timedelta(days=1) 
+                
                 if maximos:
                     fig, ax = plt.subplots(figsize=(9,5))
                     bars = ax.bar(fechas_lbl, maximos)
@@ -3295,9 +3301,13 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                         if vals: series_solar_7[lbl] = vals[:48]
                     except Exception:
                         pass
-                cur += timedelta(days=1)
+                cur += timedelta(days=1) 
+            
             lbl_fin = fin.strftime("%Y-%m-%d")
             if lbl_fin in series_sol_dia: series_solar_7[lbl_fin] = series_sol_dia[lbl_fin][:48]
+            
+            st.session_state["series_sol"] = series_solar_7
+            
             if series_solar_7:
                 fechas_orden=[]; cur=ini
                 while cur<=fin:
@@ -3328,6 +3338,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                         vals = [0 if (v is None or (isinstance(v,float) and math.isnan(v))) else float(v) for v in series_solar_7[l][:48]]
                         promedios.append(sum(vals)/48.0); fechas_lbl.append(l)
                     cur += timedelta(days=1)
+                    
                 if promedios:
                     fig, ax = plt.subplots(figsize=(9,5))
                     bars = ax.bar(fechas_lbl, promedios)
@@ -3507,8 +3518,8 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                             series_term_7[lbl] = vals[:48]
                     except Exception:
                         pass
-                cur += timedelta(days=1)
-        
+                cur += timedelta(days=1) 
+            
             lbl_fin = fin.strftime("%Y-%m-%d")
             if lbl_fin in series_term_dia:
                 series_term_7[lbl_fin] = series_term_dia[lbl_fin][:48]
@@ -3516,7 +3527,9 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 # usar el último RDO disponible
                 ultimo = sorted(series_term_dia.keys())[-1]
                 series_term_7[lbl_fin] = series_term_dia[ultimo][:48]
-                
+            
+            st.session_state["series_t"] = series_term_7
+            
             # ---------- GRÁFICO PRINCIPAL HISTÓRICO ----------
             if series_term_7:
                 fechas_orden = []
@@ -3590,7 +3603,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                         0.0 if (v is None or (isinstance(v,float) and math.isnan(v))) else float(v)
                         for v in series_term_7[l][:48]
                     ]
-                    energia = sum(vals)  # sumatoria de las 48 horas
+                    energia = sum(vals)/2.0
                     energias.append(energia)
                     fechas_lbl.append(l)
                 cur += timedelta(days=1)
@@ -3622,7 +3635,12 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 with cols[i]:
                     st.pyplot(fig)
                 plt.close(fig)
-                
+    
+    series_h   = st.session_state.get("series_h", {})
+    series_t   = st.session_state.get("series_t", {})
+    series_rer = st.session_state.get("series_rer", {})
+    series_sol = st.session_state.get("series_sol", {})
+    
     with tab7:
         # =========================================================
         # ======================= TERMICAS ======================== 
@@ -3633,7 +3651,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                                    pdo_res, rdo_letras, work_dir,
                                    fecha_str, ddmm,
                                    stem_term="Termica - Despacho (MW)"):
-
+            
             series = {}
         
             # --- PDO ---
@@ -3774,10 +3792,10 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
     series_t   = st.session_state.get("series_t", {})
     series_rer = st.session_state.get("series_rer", {})
     series_sol = st.session_state.get("series_sol", {})
-
+    
     with tab8:
         st.markdown("### Curva del SEIN")
-    
+        
         try:
             def _to48(arr):
                 if arr is None:
@@ -3789,13 +3807,13 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     [0 if (v is None or (isinstance(v, float) and np.isnan(v)) or pd.isna(v)) else float(v) for v in a],
                     dtype=float
                 )
-    
-            # PDOs
-            pdo_hidro = _to48(series_h.get("PDO")    if "series_h"   in locals() and series_h   else None)
-            pdo_term  = _to48(series_t.get("PDO")    if "series_t"   in locals() and series_t   else None)
-            pdo_eol   = _to48(series_rer.get("PDO")  if "series_rer" in locals() and series_rer else None)
-            pdo_solar = _to48(series_sol.get("PDO")  if "series_sol" in locals() and series_sol else None)
-    
+            
+            # RDOs
+            pdo_hidro = _to48(series_h.get(lbl_fin))
+            pdo_term  = _to48(series_t.get(lbl_fin))
+            pdo_eol   = _to48(series_rer.get(lbl_fin))
+            pdo_solar = _to48(series_sol.get(lbl_fin))
+                       
             # Acumulados
             y_h = pdo_hidro
             y_t = y_h + pdo_term
@@ -3807,7 +3825,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             horas = [f"{h:02d}:{m:02d}" for h in range(0, 24) for m in (30, 0)][1:] + ["24:00"]
     
             fig, ax = plt.subplots(figsize=(11, 5))
-    
+            
             # ==== ÁREAS COLOREADAS (sin bordes) ====
             ax.fill_between(x, 0,   y_h, color="#1f77b4", alpha=0.5, label="HIDRO",   edgecolor="none", linewidth=0)
             ax.fill_between(x, y_h, y_t, color="#d62728", alpha=0.5, label="TÉRMICA", edgecolor="none", linewidth=0)
