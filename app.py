@@ -4357,14 +4357,11 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             st.dataframe(df_final, width='stretch')
             
             # DESCARGA AQUÍ
-            excel_bytes = exportar_excel(df_final)
-        
-            st.download_button(
-                label="📥 Descargar CMG en Excel",
-                data=excel_bytes,
-                file_name=f"CMG_{ini.strftime('%Y%m%d')}_{fin.strftime('%Y%m%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                
+            ruta_cmg = work_dir / f"CMG_{ini.strftime('%Y%m%d')}_{fin.strftime('%Y%m%d')}.xlsx"
+            df_final.to_excel(ruta_cmg, index=False)
+            
+            st.success(f"Archivo CMG guardado en: {ruta_cmg}")
+            
     with tab13:
         # =========================================================
         # ================== DESPACHO EJECUTADO ===================
@@ -4479,13 +4476,10 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             st.dataframe(df_final, width='stretch')
             
             # DESCARGA EXCEL
-            excel_bytes = exportar_excel(df_final)
-    
-            st.download_button(
-                label="📥 Descargar Despacho Ejecutado en Excel",
-                data=excel_bytes,
-                file_name=f"Despacho_{ini.strftime('%Y%m%d')}_{fin.strftime('%Y%m%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            ruta_despacho = work_dir / f"Despacho_{ini.strftime('%Y%m%d')}_{fin.strftime('%Y%m%d')}.xlsx"
+            df_final.to_excel(ruta_despacho, index=False)
+            
+            st.success(f"Archivo Despacho guardado en: {ruta_despacho}")
             
 # -----------------------------------------------------------------------------
 # ------------------------------------ PDF ------------------------------------
