@@ -26,6 +26,7 @@ warnings.filterwarnings(
 # ------------------ Configuración ------------------
 BARRAS_DEF = ["SANTA ROSA 220 A", "MOQUEGUA 220", "ZORRITOS 220"]
 RDO_LETRAS_DEF = list("ABCDEF")
+MES_TXT_TITLE = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 MES_TXT = ["ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO","JULIO","AGOSTO","SETIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"]
 
 base_pdo = ("https://www.coes.org.pe/portal/browser/download?"
@@ -43,6 +44,13 @@ base_motivo = ("https://www.coes.org.pe/portal/browser/download?"
 base_indices = ("https://www.coes.org.pe/portal/browser/download?"
                 "url=Operaci%C3%B3n%2FPrograma%20de%20Operaci%C3%B3n%2FReprograma%20Diario%20Operaci%C3%B3n%2F"
                 "{y}%2F{m}_{M}%2FD%C3%ADa%20{d}%2FReprog%20{dd}{mm}{L}%2Findices{y}{mm}{dd}_{L}.xlsx")
+
+base_cmg = (
+    "https://www.coes.org.pe/portal/browser/download?"
+    "url=Post%20Operaci%C3%B3n%2FReportes%2FIEOD%2F"
+    "{y}%2F{m}_{M}%2F{d}%2F"
+    "CMg{y}{m}{d}.zip"
+)
 
 # ------------------ Utilidades ------------------
 def _descargar_y_extraer_zip(url: str, destino: Path) -> bool:
@@ -528,6 +536,15 @@ def _to_minutes(hhmm: str) -> int:
     h, m = hhmm.split(":")
     return int(h) * 60 + int(m)
 
+def exportar_excel(df: pd.DataFrame) -> bytes:
+    from io import BytesIO
+
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="DATA")
+
+    return output.getvalue()
+
 # -----------------------------------------------------------------------------
 # ------------------------------- PANTALLA ------------------------------------
 # -----------------------------------------------------------------------------
@@ -551,10 +568,10 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
     pdo_res = work_dir / f"PDO_{fecha_str}" / f"YUPANA_{fecha_str}" / "RESULTADOS"
     
     # ==== Pestañas ====
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9,tab10, tab11  = st.tabs(["Demanda", "Motivos, Costo Total e Índices", 
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9,tab10, tab11, tab12, tab13  = st.tabs(["Demanda", "Motivos, Costo Total e Índices", 
                                                                            "Recurso y Error", "CMG" , "Histórico del IEOD","Histórico de Potencia y Energía", 
                                                                            "Térmicas", "Curva de SEIN", "Potencia Activa", "Histórico Electro Oriente",
-                                                                           "Otros"])
+                                                                           "Otros","CMG","Despacho Ejecutado"])
     
     with tab1:
         # =========================================================
@@ -1420,21 +1437,27 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         try:
             stem_term = "Termica - Despacho (MW)"
             stem_rer  = "Rer y No COES - Despacho (MW)"
-        
+            
             # Lista de térmicas RER (no COES)
             grupos_gas = [
                 "MAPLE","PARAMONGA","REPARTICION","HUAYCOLORO","TABLAZO","CTB DONA CATALINA","CT CANA BRAVA",
                 "CT SAN JACINTO","CTB CALLAO","CT TALLANCA","CTAGROOLMOS","CASAGRANDE","CSCOENERGY","PIAS"
             ]
             grupos_gas = [g.upper().strip() for g in grupos_gas]
-        
+            
             # === Series TÉRMICAS (PDO + RDOs) ===
             series_t = {}
-        
+
             # --- PDO ---
             df_pdo_term = cargar_dataframe(pdo_res, stem_term)
             df_pdo_rer  = cargar_dataframe(pdo_res, stem_rer)
-        
+            
+            # Normalizar columnas
+            df_pdo_rer.columns = df_pdo_rer.columns.str.upper().str.strip()
+            
+            # Filtrar columnas que coincidan con grupos_gas
+            cols_rer = [c for c in df_pdo_rer.columns if c in grupos_gas]
+            
             tot_term  = rellenar_hasta_48(totales_hidro(df_pdo_term))   # Suma todas las térmicas COES
             tot_rer_t = rellenar_hasta_48(totales_rer(df_pdo_rer, grupos_gas))  # Solo térmicas RER
         
@@ -1452,7 +1475,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         
                 if t_term and t_rer:
                     series_t[f"RDO {letra}"] = suma_elementos(t_term, t_rer)
-        
+                    
             # === TÉRMICA (MW) — Línea ===
             if series_t:
                 fig, ax = plt.subplots(figsize=(11, 5))
@@ -2347,7 +2370,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 url_zip = base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra="A")
                 carpeta = work_dir / f"RDO_A_{yk}{mk}{dk}"
                 resultados = carpeta / f"YUPANA_{dk}{mk}A" / "RESULTADOS"
-        
+                
                 if not resultados.exists():
                     try:
                         r = requests.get(url_zip, timeout=40)
@@ -4229,7 +4252,241 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 procesar_central(nombre, unidades, y, m, d, M, rdo_letras)
         else:
             st.info("Presiona **Generar** para ver las gráficas térmicas fusionadas.")
-                 
+    
+    with tab12:
+        # =========================================================
+        # ========================== CMG ==========================
+        # =========================================================
+        st.markdown("### COSTOS MARGINALES")
+        
+        def hacer_columnas_unicas(cols):
+            conteo = {}
+            nuevas = []
+    
+            for col in cols:
+                if col not in conteo:
+                    conteo[col] = 0
+                    nuevas.append(col)
+                else:
+                    conteo[col] += 1
+                    nuevas.append(f"{col}_{conteo[col]}")
+    
+            return nuevas
+    
+        def leer_cmg_dia(y, m, d, M):
+            from io import BytesIO
+    
+            url = base_cmg.format(y=y, m=m, d=d, M=M)
+    
+            try:
+                r = requests.get(url, verify=False, timeout=30)
+                r.raise_for_status()
+            except:
+                return None
+    
+            try:
+                z = zipfile.ZipFile(BytesIO(r.content))
+    
+                # buscar el excel dentro del zip
+                nombre_excel = None
+                for f in z.namelist():
+                    if f.endswith(".xlsx") and "CMgCP" in f:
+                        nombre_excel = f
+                        break
+    
+                if nombre_excel is None:
+                    return None
+    
+                with z.open(nombre_excel) as f:
+                    df_raw = pd.read_excel(f, sheet_name="Cmg_Barra", header=None)
+    
+                # ===== encabezado (fila 3 → índice 2) =====
+                header_row = df_raw.iloc[2]
+    
+                # ===== detectar columnas desde B hasta fin real =====
+                col_validas = []
+                for i in range(1, len(header_row)):  # empieza en B
+                    if pd.isna(header_row[i]):
+                        break
+                    col_validas.append(i)
+    
+                headers = [str(header_row[i]) for i in col_validas]
+    
+                # evitar duplicados
+                headers = hacer_columnas_unicas(headers)
+    
+                # ===== data filas 4 a 51 =====
+                df = df_raw.iloc[3:51, col_validas].copy()
+                df.columns = headers
+    
+                df = df.dropna(how="all").reset_index(drop=True)
+    
+                return df
+    
+            except:
+                return None
+    
+        # ===== recorrer rango =====
+        resultados = []
+        fecha_actual = ini
+    
+        with st.spinner("Procesando CMG…"):
+            while fecha_actual <= fin:
+                y = fecha_actual.year
+                m = f"{fecha_actual.month:02d}"
+                d = f"{fecha_actual.day:02d}"
+                M = MES_TXT_TITLE[int(m) - 1]
+    
+                df_dia = leer_cmg_dia(y, m, d, M)
+    
+                if df_dia is not None and not df_dia.empty:
+                    df_dia["FECHA"] = fecha_actual
+                    resultados.append(df_dia)
+    
+                fecha_actual += timedelta(days=1)
+    
+        # ===== mostrar =====
+        if not resultados:
+            st.info("No hay datos CMG para el rango seleccionado.")
+        else:
+            df_final = pd.concat(resultados, ignore_index=True)
+    
+            cols = ["FECHA"] + [c for c in df_final.columns if c != "FECHA"]
+            df_final = df_final[cols]
+    
+            st.dataframe(df_final, width='stretch')
+            
+            # DESCARGA AQUÍ
+            excel_bytes = exportar_excel(df_final)
+        
+            st.download_button(
+                label="📥 Descargar CMG en Excel",
+                data=excel_bytes,
+                file_name=f"CMG_{ini.strftime('%Y%m%d')}_{fin.strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                
+    with tab13:
+        # =========================================================
+        # ================== DESPACHO EJECUTADO ===================
+        # =========================================================
+        st.markdown("### DESPACHO EJECUTADO")
+        
+        # ===== función para evitar columnas duplicadas =====
+        def hacer_columnas_unicas(cols):
+            conteo = {}
+            nuevas = []
+    
+            for col in cols:
+                if col not in conteo:
+                    conteo[col] = 0
+                    nuevas.append(col)
+                else:
+                    conteo[col] += 1
+                    nuevas.append(f"{col}_{conteo[col]}")
+    
+            return nuevas
+    
+        # ===== función para leer IEOD por día =====
+        def leer_ieod_dia(y, m, d, M):
+            from io import BytesIO
+    
+            ddmm = f"{d}{m}"
+            url = base_ieod.format(y=y, m=m, d=d, M=M, ddmm=ddmm)
+    
+            try:
+                r = requests.get(url, verify=False, timeout=30)
+                r.raise_for_status()
+            except:
+                return None
+    
+            try:
+                xls = pd.ExcelFile(BytesIO(r.content))
+    
+                if "DESPACHO_EJECUTADO" not in xls.sheet_names:
+                    return None
+    
+                df_raw = pd.read_excel(
+                    xls,
+                    sheet_name="DESPACHO_EJECUTADO",
+                    header=None
+                )
+    
+                # ===== TODAS las columnas =====
+                todas_cols = list(range(df_raw.shape[1]))
+    
+                # ===== encabezados (filas 5, 9, 10) =====
+                headers = []
+                for col in todas_cols:
+                    h1 = str(df_raw.iloc[4, col]) if not pd.isna(df_raw.iloc[4, col]) else ""
+                    h2 = str(df_raw.iloc[8, col]) if not pd.isna(df_raw.iloc[8, col]) else ""
+                    h3 = str(df_raw.iloc[9, col]) if not pd.isna(df_raw.iloc[9, col]) else ""
+    
+                    header = " | ".join([h for h in [h1, h2, h3] if h.strip() != ""])
+                    headers.append(header if header else f"COL_{col}")
+    
+                # ===== RECORTE por columna "MW" =====
+                col_validas = []
+                for i, h in enumerate(headers):
+                    col_validas.append(i)
+                    if h.strip() == "MW":
+                        break
+    
+                headers = [headers[i] for i in col_validas]
+    
+                # ===== hacer encabezados únicos =====
+                headers = hacer_columnas_unicas(headers)
+    
+                # ===== data =====
+                df = df_raw.iloc[10:, col_validas].copy()
+                df.columns = headers
+    
+                # eliminar filas vacías
+                df = df.dropna(how="all").reset_index(drop=True)
+    
+                return df
+    
+            except:
+                return None
+    
+        # ===== recorrer rango =====
+        resultados = []
+        fecha_actual = ini
+    
+        with st.spinner("Procesando IEOD (Despacho Ejecutado)…"):
+            while fecha_actual <= fin:
+                y = fecha_actual.year
+                m = f"{fecha_actual.month:02d}"
+                d = f"{fecha_actual.day:02d}"
+                M = MES_TXT[int(m) - 1]
+    
+                df_dia = leer_ieod_dia(y, m, d, M)
+    
+                if df_dia is not None and not df_dia.empty:
+                    df_dia["FECHA"] = fecha_actual
+                    resultados.append(df_dia)
+    
+                fecha_actual += timedelta(days=1)
+    
+        # ===== mostrar =====
+        if not resultados:
+            st.info("No hay datos disponibles para el rango seleccionado.")
+        else:
+            df_final = pd.concat(resultados, ignore_index=True)
+    
+            cols = ["FECHA"] + [c for c in df_final.columns if c != "FECHA"]
+            df_final = df_final[cols]
+    
+            st.dataframe(df_final, width='stretch')
+            
+            # DESCARGA EXCEL
+            excel_bytes = exportar_excel(df_final)
+    
+            st.download_button(
+                label="📥 Descargar Despacho Ejecutado en Excel",
+                data=excel_bytes,
+                file_name=f"Despacho_{ini.strftime('%Y%m%d')}_{fin.strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            
 # -----------------------------------------------------------------------------
 # ------------------------------------ PDF ------------------------------------
 # -----------------------------------------------------------------------------        
