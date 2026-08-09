@@ -45,12 +45,8 @@ base_indices = ("https://www.coes.org.pe/portal/browser/download?"
                 "url=Operaci%C3%B3n%2FPrograma%20de%20Operaci%C3%B3n%2FReprograma%20Diario%20Operaci%C3%B3n%2F"
                 "{y}%2F{m}_{M}%2FD%C3%ADa%20{d}%2FReprog%20{dd}{mm}{L}%2Findices{y}{mm}{dd}_{L}.xlsx")
 
-base_cmg = (
-    "https://www.coes.org.pe/portal/browser/download?"
-    "url=Post%20Operaci%C3%B3n%2FReportes%2FIEOD%2F"
-    "{y}%2F{m}_{M}%2F{d}%2F"
-    "CMg{y}{m}{d}.zip"
-)
+base_cmg = ("https://www.coes.org.pe/portal/browser/download?url=Post%20Operaci%C3%B3n%2FReportes%2FIEOD%2F"
+            "{y}%2F{m}_{M}%2F{d}%2FCMg{y}{m}{d}.zip")
 
 # ------------------ Utilidades ------------------
 def _descargar_y_extraer_zip(url: str, destino: Path) -> bool:
@@ -869,7 +865,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                         )
             
                     plt.tight_layout()
-                    st.pyplot(fig, width="stretch")
+                    st.pyplot(fig)
                     plt.close(fig)
                     
         except Exception:
@@ -931,13 +927,13 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 c1, c2, c3 = st.columns(3)
                 with c1:
                     fig = _plot_indices_streamlit(xlbls, alfa,  "ALFA (HIDRO)",   marcas_x, marcas_lbl)
-                    st.pyplot(fig, width="stretch"); plt.close(fig)
+                    st.pyplot(fig); plt.close(fig)
                 with c2:
                     fig = _plot_indices_streamlit(xlbls, beta,  "BETA (TERMO)",   marcas_x, marcas_lbl)
-                    st.pyplot(fig, width="stretch"); plt.close(fig)
+                    st.pyplot(fig); plt.close(fig)
                 with c3:
                     fig = _plot_indices_streamlit(xlbls, gamma, "GAMMA (DEMANDA)",marcas_x, marcas_lbl)
-                    st.pyplot(fig, width="stretch"); plt.close(fig)
+                    st.pyplot(fig); plt.close(fig)
         except Exception:
             pass
         
@@ -1803,7 +1799,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     margin=dict(t=40, b=40, l=60, r=20)
                 )
         
-                st.plotly_chart(fig, width='stretch')
+                st.plotly_chart(fig)
         except Exception:
             pass
         
@@ -1987,7 +1983,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     margin=dict(t=40, b=40, l=60, r=20)
                 )
         
-                st.plotly_chart(fig, width='stretch')
+                st.plotly_chart(fig)
         
         except Exception:
             pass
@@ -2134,7 +2130,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     margin=dict(t=40, b=40, l=60, r=20)
                 )
         
-                st.plotly_chart(fig, width='stretch')
+                st.plotly_chart(fig)
         
         except Exception as e:
             st.warning(f"Error en histórico eólico: {e}")
@@ -2292,7 +2288,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     margin=dict(t=40, b=40, l=60, r=20)
                 )
         
-                st.plotly_chart(fig, width='stretch')
+                st.plotly_chart(fig)
         
         except Exception as e:
             st.warning(f"Error en histórico solar: {e}")
@@ -2474,7 +2470,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     margin=dict(t=40, b=40, l=60, r=20)
                 )
                 
-                st.plotly_chart(fig, width='stretch')
+                st.plotly_chart(fig)
                 
         except Exception:
             pass
@@ -3752,7 +3748,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 hovermode="x unified",
             )
         
-            st.plotly_chart(fig, width="stretch")
+            st.plotly_chart(fig)
             
         # ===============================
         #   LISTA DE GRÁFICOS TÉRMICOS
@@ -4008,7 +4004,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                             plt.legend()
                             plt.tight_layout()
                             
-                            st.pyplot(fig, width="stretch")
+                            st.pyplot(fig)
                             plt.close(fig) 
             
     with tab10:
@@ -4102,7 +4098,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     ax.xaxis.set_major_formatter(plt.FuncFormatter(formatear_fecha_espanol))
                     plt.xticks(rotation=45, ha='right', fontsize=7)
                     plt.tight_layout()
-                    st.pyplot(fig, width="stretch")
+                    st.pyplot(fig)
                     plt.close(fig)
     
                     # ==================== Tabla ====================
@@ -4219,7 +4215,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             ax.set_xticklabels(etiquetas, rotation=90, fontsize=7)
             plt.tight_layout()
     
-            st.pyplot(fig, width="stretch")
+            st.pyplot(fig)
             plt.close(fig)
     
         # --- Lista de centrales ---
