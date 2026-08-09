@@ -564,10 +564,10 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
     pdo_res = work_dir / f"PDO_{fecha_str}" / f"YUPANA_{fecha_str}" / "RESULTADOS"
     
     # ==== Pestañas ====
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9,tab10, tab11, tab12, tab13  = st.tabs(["Demanda", "Motivos, Costo Total e Índices", 
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9,tab10, tab11, tab12  = st.tabs(["Demanda", "Motivos, Costo Total e Índices", 
                                                                            "Recurso y Error", "CMG" , "Histórico del IEOD","Histórico de Potencia y Energía", 
                                                                            "Térmicas", "Curva de SEIN", "Potencia Activa", "Histórico Electro Oriente",
-                                                                           "Otros","CMG","Despacho Ejecutado"])
+                                                                           "Otros", "Despacho Ejecutado"])
     
     with tab1:
         # =========================================================
@@ -4443,111 +4443,8 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 procesar_central(nombre, unidades, y, m, d, M, rdo_letras)
         else:
             st.info("Presiona **Generar** para ver las gráficas térmicas fusionadas.")
-    
-    with tab12:
-        # =========================================================
-        # ========================== CMG ==========================
-        # =========================================================
-        st.markdown("### COSTOS MARGINALES")
-        
-        def hacer_columnas_unicas(cols):
-            conteo = {}
-            nuevas = []
-    
-            for col in cols:
-                if col not in conteo:
-                    conteo[col] = 0
-                    nuevas.append(col)
-                else:
-                    conteo[col] += 1
-                    nuevas.append(f"{col}_{conteo[col]}")
-    
-            return nuevas
-    
-        def leer_cmg_dia(y, m, d, M):
-            from io import BytesIO
-    
-            url = base_cmg.format(y=y, m=m, d=d, M=M)
-    
-            try:
-                r = requests.get(url, verify=False, timeout=30)
-                r.raise_for_status()
-            except:
-                return None
-    
-            try:
-                z = zipfile.ZipFile(BytesIO(r.content))
-    
-                # buscar el excel dentro del zip
-                nombre_excel = None
-                for f in z.namelist():
-                    if f.endswith(".xlsx") and "CMgCP" in f:
-                        nombre_excel = f
-                        break
-    
-                if nombre_excel is None:
-                    return None
-    
-                with z.open(nombre_excel) as f:
-                    df_raw = pd.read_excel(f, sheet_name="Cmg_Barra", header=None)
-    
-                # ===== encabezado (fila 3 → índice 2) =====
-                header_row = df_raw.iloc[2]
-    
-                # ===== detectar columnas desde B hasta fin real =====
-                col_validas = []
-                for i in range(1, len(header_row)):  # empieza en B
-                    if pd.isna(header_row[i]):
-                        break
-                    col_validas.append(i)
-    
-                headers = [str(header_row[i]) for i in col_validas]
-    
-                # evitar duplicados
-                headers = hacer_columnas_unicas(headers)
-    
-                # ===== data filas 4 a 51 =====
-                df = df_raw.iloc[3:51, col_validas].copy()
-                df.columns = headers
-    
-                df = df.dropna(how="all").reset_index(drop=True)
-    
-                return df
-    
-            except:
-                return None
-    
-        # ===== recorrer rango =====
-        resultados = []
-        fecha_actual = ini
-    
-        with st.spinner("Procesando CMG…"):
-            while fecha_actual <= fin:
-                y = fecha_actual.year
-                m = f"{fecha_actual.month:02d}"
-                d = f"{fecha_actual.day:02d}"
-                M = MES_TXT_TITLE[int(m) - 1]
-    
-                df_dia = leer_cmg_dia(y, m, d, M)
-    
-                if df_dia is not None and not df_dia.empty:
-                    df_dia["FECHA"] = fecha_actual
-                    resultados.append(df_dia)
-    
-                fecha_actual += timedelta(days=1)
-    
-        # ===== mostrar =====
-        if not resultados:
-            st.info("No hay datos CMG para el rango seleccionado.")
-        else:
-            df_final = pd.concat(resultados, ignore_index=True)
-    
-            cols = ["FECHA"] + [c for c in df_final.columns if c != "FECHA"]
-            df_final = df_final[cols]
-    
-            st.dataframe(df_final)
             
-    with tab13:
+    with tab12:
         # =========================================================
         # ================== DESPACHO EJECUTADO ===================
         # =========================================================
@@ -4665,7 +4562,25 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
 # -----------------------------------------------------------------------------        
 def render_graficos_a_pdf(ini: date, fin: date, barras: list[str], rdo_letras: list[str], work_dir: Path, pdf: PdfPages):
     return    
-st.set_page_config(page_title="Reporte Programa Diario de Operación", layout="wide")
+st.set_page_config(
+    page_title="Reporte Programa Diario de Operación",
+    layout="wide"
+)
+
+st.markdown("""
+<style>
+div[data-baseweb="tab-list"] {
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: thin;
+}
+
+div[data-baseweb="tab-list"] button {
+    flex: 0 0 auto;
+}
+</style>
+""", unsafe_allow_html=True)
+
 st.sidebar.header("Parámetros")
 ini = st.sidebar.date_input("Inicio del rango", value=date.today(), format="DD/MM/YYYY")
 fecha_sel = st.sidebar.date_input("Fecha del reporte", value=ini, format="DD/MM/YYYY")
