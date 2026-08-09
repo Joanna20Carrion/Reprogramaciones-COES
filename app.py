@@ -1580,39 +1580,234 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         st.session_state.series_sol = series_sol          
         
     with tab4:
-        # =========================================================
-        # ======================== CMG ============================
-        # =========================================================
+    # =========================================================
+    # ======================== CMG ============================
+    # =========================================================
         try:
-            st.markdown("### CMG")
+            st.markdown("### CMG HISTÓRICO")
+
+            # =====================================================
+            # 1. GRÁFICAS CMG POR BARRA
+            # =====================================================
             stem_file = "CMg - Barra ($ por MWh)"
             df_pdo = cargar_dataframe(pdo_res, stem_file)
-    
+
             for barra in barras:
-                datosPDO = rellenar_hasta_48(extraer_columna(df_pdo, barra))
+                datosPDO = rellenar_hasta_48(
+                    extraer_columna(df_pdo, barra)
+                )
+
                 if not datosPDO:
                     continue
-    
+
                 series_barra = {"PDO": datosPDO}
-    
-                # cargo todos los RDO para esa barra
+
+                # Cargo todos los RDO para esa barra
                 for letra in rdo_letras:
-                    rdo_res = work_dir / f"RDO_{letra}_{fecha_str}" / f"YUPANA_{ddmm}{letra}" / "RESULTADOS"
+                    rdo_res = (
+                        work_dir
+                        / f"RDO_{letra}_{fecha_str}"
+                        / f"YUPANA_{ddmm}{letra}"
+                        / "RESULTADOS"
+                    )
+
                     df_rdo = cargar_dataframe(rdo_res, stem_file)
-                    datosRDO = rellenar_hasta_48(extraer_columna(df_rdo, barra))
+
+                    datosRDO = rellenar_hasta_48(
+                        extraer_columna(df_rdo, barra)
+                    )
+
                     if datosRDO:
                         series_barra[f"RDO {letra}"] = datosRDO
-    
-                # ploteo
+
+                # Gráfico
                 fig, ax = plt.subplots(figsize=(11, 5))
-                ok = _plot_cmg_barra_en_axes(ax, barra, series_barra, horas, ticks_pos, ticks_lbl)
+
+                ok = _plot_cmg_barra_en_axes(
+                    ax,
+                    barra,
+                    series_barra,
+                    horas,
+                    ticks_pos,
+                    ticks_lbl
+                )
+
                 if ok:
                     plt.tight_layout()
                     st.pyplot(fig)
+
                 plt.close(fig)
-    
-        except Exception:
-            pass
+
+            # =====================================================
+            # 2. TABLA CMG HISTÓRICO
+            # =====================================================
+            st.markdown("---")
+            st.markdown("### COSTOS MARGINALES")
+
+            def hacer_columnas_unicas(cols):
+                conteo = {}
+                nuevas = []
+
+                for col in cols:
+                    if col not in conteo:
+                        conteo[col] = 0
+                        nuevas.append(col)
+                    else:
+                        conteo[col] += 1
+                        nuevas.append(f"{col}_{conteo[col]}")
+
+                return nuevas
+
+            def leer_cmg_dia(y, m, d, M):
+                from io import BytesIO
+
+                url = base_cmg.format(
+                    y=y,
+                    m=m,
+                    d=d,
+                    M=M
+                )
+
+                try:
+                    r = requests.get(
+                        url,
+                        verify=False,
+                        timeout=30
+                    )
+                    r.raise_for_status()
+                except Exception:
+                    return None
+
+                try:
+                    z = zipfile.ZipFile(BytesIO(r.content))
+
+                    # Buscar el Excel dentro del ZIP
+                    nombre_excel = None
+
+                    for f in z.namelist():
+                        if f.endswith(".xlsx") and "CMgCP" in f:
+                            nombre_excel = f
+                            break
+
+                    if nombre_excel is None:
+                        return None
+
+                    with z.open(nombre_excel) as f:
+                        df_raw = pd.read_excel(
+                            f,
+                            sheet_name="Cmg_Barra",
+                            header=None
+                        )
+
+                    # Encabezado: fila 3 → índice 2
+                    header_row = df_raw.iloc[2]
+
+                    # Detectar columnas desde B hasta el fin real
+                    col_validas = []
+
+                    for i in range(1, len(header_row)):
+                        if pd.isna(header_row[i]):
+                            break
+
+                        col_validas.append(i)
+
+                    headers = [
+                        str(header_row[i])
+                        for i in col_validas
+                    ]
+
+                    # Evitar columnas duplicadas
+                    headers = hacer_columnas_unicas(headers)
+
+                    # Datos: filas 4 a 51
+                    df = df_raw.iloc[
+                        3:51,
+                        col_validas
+                    ].copy()
+
+                    df.columns = headers
+
+                    df = (
+                        df
+                        .dropna(how="all")
+                        .reset_index(drop=True)
+                    )
+
+                    return df
+
+                except Exception:
+                    return None
+
+            # =====================================================
+            # 3. RECORRER RANGO DE FECHAS
+            # =====================================================
+            resultados = []
+            fecha_actual = ini
+
+            with st.spinner("Procesando CMG histórico…"):
+
+                while fecha_actual <= fin:
+
+                    y = fecha_actual.year
+                    m = f"{fecha_actual.month:02d}"
+                    d = f"{fecha_actual.day:02d}"
+                    M = MES_TXT_TITLE[
+                        int(m) - 1
+                    ]
+
+                    df_dia = leer_cmg_dia(
+                        y,
+                        m,
+                        d,
+                        M
+                    )
+
+                    if (
+                        df_dia is not None
+                        and not df_dia.empty
+                    ):
+                        df_dia["FECHA"] = fecha_actual
+                        resultados.append(df_dia)
+
+                    fecha_actual += timedelta(days=1)
+
+            # =====================================================
+            # 4. MOSTRAR TABLA
+            # =====================================================
+            if not resultados:
+
+                st.info(
+                    "No hay datos CMG para el rango seleccionado."
+                )
+
+            else:
+
+                df_final = pd.concat(
+                    resultados,
+                    ignore_index=True
+                )
+
+                # FECHA primero
+                cols = (
+                    ["FECHA"]
+                    + [
+                        c
+                        for c in df_final.columns
+                        if c != "FECHA"
+                    ]
+                )
+
+                df_final = df_final[cols]
+
+                # Tabla interactiva
+                st.dataframe(
+                    df_final
+                )
+
+        except Exception as e:
+            st.error(
+                f"Error en CMG Histórico: {e}"
+            )
         
     with tab5:
         # =========================================================
@@ -4352,12 +4547,6 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
     
             st.dataframe(df_final)
             
-            # DESCARGA AQUÍ
-            ruta_cmg = work_dir / f"CMG_{ini.strftime('%Y%m%d')}_{fin.strftime('%Y%m%d')}.xlsx"
-            df_final.to_excel(ruta_cmg, index=False)
-            
-            st.success(f"Archivo CMG guardado en: {ruta_cmg}")
-            
     with tab13:
         # =========================================================
         # ================== DESPACHO EJECUTADO ===================
@@ -4470,12 +4659,6 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             df_final = df_final[cols]
     
             st.dataframe(df_final)
-            
-            # DESCARGA EXCEL
-            ruta_despacho = work_dir / f"Despacho_{ini.strftime('%Y%m%d')}_{fin.strftime('%Y%m%d')}.xlsx"
-            df_final.to_excel(ruta_despacho, index=False)
-            
-            st.success(f"Archivo Despacho guardado en: {ruta_despacho}")
             
 # -----------------------------------------------------------------------------
 # ------------------------------------ PDF ------------------------------------
