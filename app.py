@@ -4350,7 +4350,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             cols = ["FECHA"] + [c for c in df_final.columns if c != "FECHA"]
             df_final = df_final[cols]
     
-            st.dataframe(df_final, width='stretch')
+            st.dataframe(df_final)
             
             # DESCARGA AQUÍ
             ruta_cmg = work_dir / f"CMG_{ini.strftime('%Y%m%d')}_{fin.strftime('%Y%m%d')}.xlsx"
@@ -4469,7 +4469,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             cols = ["FECHA"] + [c for c in df_final.columns if c != "FECHA"]
             df_final = df_final[cols]
     
-            st.dataframe(df_final, width='stretch')
+            st.dataframe(df_final)
             
             # DESCARGA EXCEL
             ruta_despacho = work_dir / f"Despacho_{ini.strftime('%Y%m%d')}_{fin.strftime('%Y%m%d')}.xlsx"
