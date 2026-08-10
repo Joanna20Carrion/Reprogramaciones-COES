@@ -40,7 +40,7 @@ base_ieod = ("https://www.coes.org.pe/portal/browser/download?"
              "{y}%2F{m}_{M}%2F{d}%2FAnexoA_{ddmm}.xlsx")
 base_motivo = ("https://www.coes.org.pe/portal/browser/download?"
                "url=Operaci%C3%B3n%2FPrograma%20de%20Operaci%C3%B3n%2FReprograma%20Diario%20Operaci%C3%B3n%2F"
-               "{y}%2F{m}_{M}%2FD%C3%ADa%20{d}%2FReprog%20{dd}{mm}{L}%2FReprog_{dd}{mm}{L}.xlsx")
+               "{y}%2F{m}_{M}%2FD%C3%ADa%20{dd}%2FReprog%20{dd}{mm}{L}%2FReprog_{dd}{mm}{L}.xlsx") 
 base_indices = ("https://www.coes.org.pe/portal/browser/download?"
                 "url=Operaci%C3%B3n%2FPrograma%20de%20Operaci%C3%B3n%2FReprograma%20Diario%20Operaci%C3%B3n%2F"
                 "{y}%2F{m}_{M}%2FD%C3%ADa%20{d}%2FReprog%20{dd}{mm}{L}%2Findices{y}{mm}{dd}_{L}.xlsx")
@@ -165,6 +165,7 @@ def recolectar_motivos_dia(y, m, d, M, destino, letras="ABCDEF"):
     datos = []
     for L in letras:
         url = base_motivo.format(y=y, m=m, M=M, d=d, dd=d, mm=m, L=L)
+        print("URL MOTIVO:", url)
         out = destino / f"Reprog_{y}{m}{d}_{L}.xlsx"
         if not out.exists():
             try:
