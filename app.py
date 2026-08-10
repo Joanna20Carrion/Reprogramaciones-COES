@@ -839,7 +839,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 labels_por_barra = [f"RDO {chr(65 + i)}" for i in range(len(diffs_por_barra))]
                 # ==================== 3) Graficar ====================
                 if valores:
-                    fig, ax = plt.subplots(figsize=(8, 4))
+                    fig, ax = plt.subplots(figsize=(8, 5))
                     ax.bar(etiquetas, valores)
             
                     ymax = max(valores) if valores else 0.0
@@ -4632,32 +4632,9 @@ if gen_generar:
     st.subheader(f"Reporte del {fecha_hum}")
     st.caption(f"Actualizado a las {now_str} horas")
     
-    #with st.spinner("Descargando MOTIVOS RDO…"):
-     #   df_motivos_local = recolectar_motivos_dia(y=y, m=m, d=d, M=M, destino=work_dir, letras="".join(rdo_letras))
-      #  st.session_state["df_motivos"] = df_motivos_local
-
-    with st.spinner("Descargando MOTIVOS RDO…"): #Agregado
-
-        df_motivos_local = recolectar_motivos_dia(
-            y=y,
-            m=m,
-            d=d,
-            M=M,
-            destino=work_dir,
-            letras="".join(rdo_letras)
-        )
-
+    with st.spinner("Descargando MOTIVOS RDO…"):
+        df_motivos_local = recolectar_motivos_dia(y=y, m=m, d=d, M=M, destino=work_dir, letras="".join(rdo_letras))
         st.session_state["df_motivos"] = df_motivos_local
-
-        st.write(
-            f"🔎 RESULTADO FINAL MOTIVOS: "
-            f"{len(df_motivos_local)} filas"
-        )
-
-        st.dataframe(
-            df_motivos_local,
-            use_container_width=True
-        )
 
     with st.spinner("Descargando PDO/RDO para CMG…"):
         asegurar_insumos_para_cmg(y=y, m=m, d=d, M=M, work_dir=work_dir, rdo_letras=rdo_letras)
