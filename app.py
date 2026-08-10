@@ -2063,7 +2063,10 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             
                     except Exception:
                         continue
-            
+
+                st.write("RDO encontrados:", letras_validas) #Agregado 
+                st.write("Cantidad de curvas:", len(curvas)) #Agregado
+
                 if curvas:
                     curvas.sort(key=lambda x: x[0])
                     df_final = curvas[0][1].copy()
