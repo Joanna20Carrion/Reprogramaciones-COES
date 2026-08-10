@@ -767,7 +767,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 df_motivos_vista = st.session_state.get("df_motivos")
                 if df_motivos_vista is not None and not df_motivos_vista.empty:
                     st.markdown("### Motivo de Reprograma Diario")
-                    st.dataframe(df_motivos_vista, width="stretch")
+                    st.dataframe(df_motivos_vista)
                     
             with col_graf:
                 # ==================== 1) Recolectar PDO y RDOs ====================
