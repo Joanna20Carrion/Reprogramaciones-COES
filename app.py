@@ -165,11 +165,18 @@ def recolectar_motivos_dia(y, m, d, M, destino, letras="ABCDEF"):
     datos = []
     for L in letras:
         url = base_motivo.format(y=y, m=m, M=M, d=d, dd=d, mm=m, L=L)
-        print("URL MOTIVO:", url)
+        st.write(f"🔎 RDO {L}: {url}")  #AGREGADOOOO
         out = destino / f"Reprog_{y}{m}{d}_{L}.xlsx"
         if not out.exists():
             try:
                 r = requests.get(url, timeout=40)
+
+                st.write(  #AGREGADOOOO
+                    f"RDO {L} → status={r.status_code}, "
+                    f"bytes={len(r.content)}, "
+                    f"PK={r.content.startswith(b'PK')}"
+                )
+
                 if not (r.status_code == 200 and r.content.startswith(b"PK")): continue
                 out.write_bytes(r.content)
             except Exception:
