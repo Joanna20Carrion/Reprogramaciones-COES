@@ -127,30 +127,9 @@ def _extrae_demanda_48(fbytes):
     return (vals + [0.0]*48)[:48]
 
 # ---- Motivos RDO ----
-#def _leer_excel_motivo(path: Path):
-#    try: return pd.read_excel(path, header=None, engine="openpyxl")
-#    except Exception: return None
-
-def _leer_excel_motivo(path: Path): #Agregado
-    try:
-        df = pd.read_excel(
-            path,
-            header=None,
-            engine="openpyxl"
-        )
-
-        st.write(
-            f"✅ Excel leído: {path.name} | "
-            f"filas={len(df)} | columnas={len(df.columns)}"
-        )
-
-        return df
-
-    except Exception as e:
-        st.error(
-            f"❌ Error leyendo {path.name}: {repr(e)}"
-        )
-        return None
+def _leer_excel_motivo(path: Path):
+    try: return pd.read_excel(path, header=None, engine="openpyxl")
+    except Exception: return None
 
 def _extraer_motivo(df: pd.DataFrame) -> str:
     import re
@@ -4652,9 +4631,32 @@ if gen_generar:
     st.subheader(f"Reporte del {fecha_hum}")
     st.caption(f"Actualizado a las {now_str} horas")
     
-    with st.spinner("Descargando MOTIVOS RDO…"):
-        df_motivos_local = recolectar_motivos_dia(y=y, m=m, d=d, M=M, destino=work_dir, letras="".join(rdo_letras))
+    #with st.spinner("Descargando MOTIVOS RDO…"):
+     #   df_motivos_local = recolectar_motivos_dia(y=y, m=m, d=d, M=M, destino=work_dir, letras="".join(rdo_letras))
+      #  st.session_state["df_motivos"] = df_motivos_local
+
+    with st.spinner("Descargando MOTIVOS RDO…"): #Agregado
+
+        df_motivos_local = recolectar_motivos_dia(
+            y=y,
+            m=m,
+            d=d,
+            M=M,
+            destino=work_dir,
+            letras="".join(rdo_letras)
+        )
+
         st.session_state["df_motivos"] = df_motivos_local
+
+        st.write(
+            f"🔎 RESULTADO FINAL MOTIVOS: "
+            f"{len(df_motivos_local)} filas"
+        )
+
+        st.dataframe(
+            df_motivos_local,
+            use_container_width=True
+        )
 
     with st.spinner("Descargando PDO/RDO para CMG…"):
         asegurar_insumos_para_cmg(y=y, m=m, d=d, M=M, work_dir=work_dir, rdo_letras=rdo_letras)
