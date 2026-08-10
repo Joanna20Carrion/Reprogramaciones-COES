@@ -868,8 +868,9 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     st.pyplot(fig)
                     plt.close(fig)
                     
-        except Exception:
-            pass
+        except Exception as e:
+            st.error(f"ERROR EN TAB2: {type(e).__name__}: {e}")
+            st.exception(e)
         
         # =====================================================
         # ==================== ÍNDICES ========================
