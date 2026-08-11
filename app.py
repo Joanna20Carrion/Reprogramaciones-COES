@@ -23,11 +23,6 @@ warnings.filterwarnings(
     message="Attempting to set identical low and high ylims makes transformation singular"
 )
 
-ES_CLOUD = (
-    os.getenv("STREAMLIT_RUNTIME_ENV") == "cloud"
-    or os.getenv("STREAMLIT_SHARING_MODE") == "streamlit"
-)
-
 # ------------------ Configuración ------------------
 BARRAS_DEF = ["SANTA ROSA 220 A", "MOQUEGUA 220", "ZORRITOS 220"]
 RDO_LETRAS_DEF = list("ABCDEF")
@@ -4632,10 +4627,11 @@ fecha_sel = st.sidebar.date_input("Fecha del reporte", value=ini, format="DD/MM/
 barras = BARRAS_DEF
 rdo_letras = RDO_LETRAS_DEF
 fin = fecha_sel
-if ES_CLOUD:
-    work_dir_str = str(Path.home() / "Descargas_T")
-else:
-    work_dir_str = st.sidebar.text_input("Carpeta de trabajo", value=str(Path.home() / "Descargas_T"))
+work_dir_str = st.sidebar.text_input(
+    "Carpeta de trabajo",
+    value=str(Path.home() / "Descargas_T"),
+    disabled=True
+)
 
 work_dir = Path(work_dir_str); work_dir.mkdir(parents=True, exist_ok=True)
 
