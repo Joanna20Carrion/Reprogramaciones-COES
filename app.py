@@ -23,6 +23,11 @@ warnings.filterwarnings(
     message="Attempting to set identical low and high ylims makes transformation singular"
 )
 
+ES_CLOUD = (
+    os.getenv("STREAMLIT_RUNTIME_ENV") == "cloud"
+    or os.getenv("STREAMLIT_SHARING_MODE") == "streamlit"
+)
+
 # ------------------ Configuración ------------------
 BARRAS_DEF = ["SANTA ROSA 220 A", "MOQUEGUA 220", "ZORRITOS 220"]
 RDO_LETRAS_DEF = list("ABCDEF")
@@ -2036,19 +2041,46 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             
                     try:
                         r = requests.get(url_xlsx, timeout=30)
-                        if r.status_code != 200 or len(r.content) < 50000:
+                        if r.status_code != 200: 
+                            st.write(f"❌ RDO {letra}: HTTP {r.status_code}") #AGREGADO
                             continue
-            
+
                         xls = pd.ExcelFile(io.BytesIO(r.content))
                         df = pd.read_excel(xls, xls.sheet_names[0], header=None, engine="openpyxl")
-            
-                        col_idx = 101  # CX
+
+
+                        for fila in range(df.shape[0]): #AGREGADO
+                            for col in range(df.shape[1]):
+                                valor = str(df.iat[fila, col]).upper()
+                                if "TOTAL GENERACION COES" in valor: #AGREGADO
+                                    st.write(
+                                        f"✅ ENCONTRADO RDO {letra}: "
+                                        f"fila={fila}, columna={col}, valor={valor}"
+                                    )
+
+                        # Buscar primero en CV; si no está, usar CX
+                        col_idx = 99  # CV
+
                         titulo = str(df.iat[5, col_idx]).strip().upper()
-                        titulo_norm = ''.join(c for c in unicodedata.normalize("NFD", titulo) if unicodedata.category(c) != "Mn")
-            
+                        titulo_norm = ''.join(
+                            c for c in unicodedata.normalize("NFD", titulo)
+                            if unicodedata.category(c) != "Mn"
+                        )
+
+                        # Si no está en CV, probar CX
                         if "TOTAL GENERACION COES" not in titulo_norm:
+                            col_idx = 101  # CX
+
+                            titulo = str(df.iat[5, col_idx]).strip().upper()
+                            titulo_norm = ''.join(
+                                c for c in unicodedata.normalize("NFD", titulo)
+                                if unicodedata.category(c) != "Mn"
+                            )
+
+                        if "TOTAL GENERACION COES" not in titulo_norm:
+                            st.write(f"❌ RDO {letra} descartado: no se encontró TOTAL GENERACION COES")
                             continue
-            
+                            
                         horas = df.iloc[6:6+50, 1].astype(str).str.strip().tolist()
                         valores = pd.to_numeric(df.iloc[6:6+50, col_idx], errors="coerce").fillna(0).tolist()
             
@@ -2061,11 +2093,9 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                         curvas.append((letra, df_curva))
                         letras_validas.append(letra)
             
-                    except Exception:
+                    except Exception as e:
+                        st.error(f"💥 ERROR RDO {letra}: {type(e).__name__}: {e}")
                         continue
-
-                st.write("RDO encontrados:", letras_validas) #Agregado 
-                st.write("Cantidad de curvas:", len(curvas)) #Agregado
 
                 if curvas:
                     curvas.sort(key=lambda x: x[0])
@@ -2083,12 +2113,31 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     # Normaliza y muestra resultado
                     df_final = df_final[df_final["HORA"].str.match(r"^\d{2}:\d{2}$", na=False)]
                     df_final = df_final.drop_duplicates(subset=["HORA"], keep="last").reset_index(drop=True)
-                    
-                    # Guardar en memoria
-                    series_dia[fin.strftime("%Y-%m-%d")] = df_final["TOTAL_GENERACION_COES"].tolist()
+
+                    # Guardar en memoria respetando la hora real de cada valor
+                    horas_eje = [
+                        (datetime.combine(fin, datetime.min.time()) + timedelta(minutes=30 * (i + 1))).strftime("%H:%M")
+                        for i in range(48)
+                    ]
+
+                    serie_48 = [None] * 48
+
+                    for _, fila in df_final.iterrows():
+                        hora = str(fila["HORA"]).strip()
+                        valor = fila["TOTAL_GENERACION_COES"]
+
+                        # 23:59 representa el cierre del día → colocarlo en 00:00
+                        if hora == "23:59":
+                            hora = "00:00"
+
+                        if hora in horas_eje:
+                            idx = horas_eje.index(hora)
+                            serie_48[idx] = valor
+
+                    series_dia[fin.strftime("%Y-%m-%d")] = serie_48
             
-            except Exception:
-                pass
+            except Exception as e:
+                st.error(f"💥 ERROR GENERAL DEMANDA: {type(e).__name__}: {e}")
             
             # ------------ FUSIÓN IEOD + RPO A (último día) ------------
             series_dem_7 = {}
@@ -2139,10 +2188,14 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 for l in fechas_orden:
                     fobj = datetime.strptime(l, "%Y-%m-%d").date()
                     vals = [
-                        0 if (v is None or (isinstance(v, float) and math.isnan(v))) else v
+                        None if (
+                            v is None or
+                            (isinstance(v, float) and math.isnan(v))
+                        ) else v
                         for v in series_dem_7[l][:48]
                     ]
-                    y_all.extend(vals)
+
+                    y_all.extend(v for v in vals if v is not None)
         
                     if fobj == fin:
                         # Último día → rojo y grueso
@@ -4304,18 +4357,6 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     df_res["Fecha"] = df_res["Fecha"].dt.strftime("%d/%m/%Y")
                     st.dataframe(df_res, width="stretch")
     
-                    # ==================== Descarga Excel ====================
-                    excel_bytes = io.BytesIO()
-                    df_res.to_excel(excel_bytes, index=False)
-                    excel_bytes.seek(0)
-                    st.download_button(
-                        "📥 Descargar resultados en Excel",
-                        data=excel_bytes,
-                        file_name="Promedios_Electro_Oriente.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
-                    
-                    st.success(f"✅ Procesados {len(df_res)} días entre {fecha_inicio.strftime('%d/%m/%Y')} y {fecha_fin.strftime('%d/%m/%Y')}")
                 else:
                     st.warning("No se encontraron datos para el rango seleccionado.")
             else:
@@ -4591,7 +4632,11 @@ fecha_sel = st.sidebar.date_input("Fecha del reporte", value=ini, format="DD/MM/
 barras = BARRAS_DEF
 rdo_letras = RDO_LETRAS_DEF
 fin = fecha_sel
-work_dir_str = st.sidebar.text_input("Carpeta de trabajo", value=str(Path.home() / "Descargas_T"))
+if ES_CLOUD:
+    work_dir_str = str(Path.home() / "Descargas_T")
+else:
+    work_dir_str = st.sidebar.text_input("Carpeta de trabajo", value=str(Path.home() / "Descargas_T"))
+
 work_dir = Path(work_dir_str); work_dir.mkdir(parents=True, exist_ok=True)
 
 MESES = [
