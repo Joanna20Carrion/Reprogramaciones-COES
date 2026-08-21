@@ -1,0 +1,5 @@
+14,MODELO_MULTINODAL_RSF_SIMETRICO,1,2,$call mkdir "RESULTADOS\Otros"¿¿$call gams Input_Data.gms r=COES_MODEL.g00  o=_gams_net_gjo0.lst¿$if errorlevel 1 $abort errors in Input_Data.gms,
+10,MODELO_MULTINODAL_v3.0.0,1,2,$call mkdir "RESULTADOS\Otros"¿¿$call gams Input_Data.gms r=COES_MODEL.g00  o=_gams_net_gjo0.lst¿$if errorlevel 1 $abort errors in Input_Data.gms,
+16,MODELO_MULTINODAL_v2.3.1,1,2,$call mkdir "RESULTADOS\Otros"¿¿$call gams Input_Data.gms r=COES_MODEL.g00  o=_gams_net_gjo0.lst¿$if errorlevel 1 $abort errors in Input_Data.gms,
+15,MODELO_MULTINODAL_V2,1,2,$call mkdir "RESULTADOS\Otros"¿¿$call gams Input_Data.gms r=COES_MODEL.g00  o=_gams_net_gjo0.lst¿$if errorlevel 1 $abort errors in Input_Data.gms,
+12,FLUJO_OPTIMO,1,2,$call mkdir "RESULTADOS\Otros"¿¿$call gams Input_Data.gms r=COES_MODEL.g00  o=_gams_net_gjo0.lst¿$if errorlevel 1 $abort errors in Input_Data.gms,
