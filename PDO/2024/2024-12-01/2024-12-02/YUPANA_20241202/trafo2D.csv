@@ -1,3 +1,0 @@
-Id Equipo,Equipo,Id COES,Considera Equipo,Id Cat Vierte,Id Vierte,Id Cat Turbina,Id Turbina,Id Padre,Id Nod Destino,Id Nod Origen,Id Nodo,Considera en Escenario?,RESISTENCIA 2D,REACTANCIA 2D,CAPACIDAD 2D,Perdidas Máximas,Reduccion,Capacidad Ilimitada,Estado
-1,AT220_138PUN,592,1,0,0,0,0,0,64,63,0,1,0.80331,49.11943,120,0,,,1
-2,T220_60ZAP,611,1,0,0,0,0,0,102,39,0,1,0.56768,24.45787,180,0,,,1
