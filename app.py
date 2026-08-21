@@ -345,22 +345,48 @@ def _build_time_labels_and_ticks():
     return horas, ticks_pos, ticks_lbl
 
 def _plot_cmg_barra_en_axes(ax, barra, series_barra, horas, ticks_pos, ticks_lbl):
+
     valores_plot = []
+
     for nombre, valores in series_barra.items():
+
         x, y = recortar_ceros_inicio(valores, horas)
-        if not y: continue
+
+        if not y:
+            continue
+
         valores_plot.extend(y)
         ax.plot(x, y, marker="o", linewidth=2, label=nombre)
-    if not valores_plot: return False
+
+    if not valores_plot:
+        return False
+
     min_y = max(0, math.floor(min(valores_plot)) - 2)
     max_y = math.ceil(max(valores_plot)) + 2
+
     ax.set_ylim(min_y, max_y)
+
     ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+
     ax.grid(axis="y", linestyle="--", alpha=0.5)
-    ax.set_xticks(ticks_pos); ax.set_xticklabels(ticks_lbl, rotation=90, ha="center", fontsize=10)
+
+    ticks_pos_final = list(range(48))
+    ticks_lbl_final = list(horas[:-1]) + ["00:00"]
+
+    ax.set_xticks(ticks_pos_final)
+    ax.set_xticklabels(
+        ticks_lbl_final,
+        rotation=90,
+        ha="center",
+        fontsize=10
+    )
+
+    ax.set_xlim(0, 47)
+
     ax.set_title(f"CMG {barra}")
     ax.set_ylabel("USD/MWh")
     ax.legend()
+
     return True
 
 def asegurar_insumos_para_cmg(y: int, m: str, d: str, M: str, work_dir: Path, rdo_letras: list[str]):
@@ -564,10 +590,9 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
     pdo_res = work_dir / f"PDO_{fecha_str}" / f"YUPANA_{fecha_str}" / "RESULTADOS"
     
     # ==== Pestañas ====
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9,tab10, tab11, tab12  = st.tabs(["Demanda", "Motivos, Costo Total e Índices", 
-                                                                           "Recurso y Error", "CMG" , "Histórico del IEOD","Histórico de Potencia y Energía", 
-                                                                           "Térmicas", "Curva de SEIN", "Potencia Activa", "Histórico Electro Oriente",
-                                                                           "Otros", "Despacho Ejecutado"])
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9,tab10  = st.tabs(["Demanda", "Motivos, Costo Total e Índices", "Recurso y Error", "CMG" , 
+                                                                           "Histórico del IEOD","Histórico de Potencia y Energía", 
+                                                                           "Térmicas", "Curva de SEIN", "Potencia Activa", "Otros"])
     
     with tab1:
         # =========================================================
@@ -767,7 +792,56 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 df_motivos_vista = st.session_state.get("df_motivos")
                 if df_motivos_vista is not None and not df_motivos_vista.empty:
                     st.markdown("### Motivo de Reprograma Diario")
-                    st.dataframe(df_motivos_vista)
+                    html_tabla = df_motivos_vista.to_html(
+                        index=False,
+                        escape=True,
+                        classes="tabla-motivos"
+                    )
+
+                    st.markdown(
+                        """
+                        <style>
+                        .tabla-motivos {
+                            width: 100%;
+                            border-collapse: collapse;
+                            font-size: 14px;
+                        }
+
+                        .tabla-motivos th {
+                            background-color: #f0f2f6;
+                            padding: 8px;
+                            text-align: left;
+                            border: 1px solid #ddd;
+                        }
+
+                        .tabla-motivos td {
+                            padding: 8px;
+                            border: 1px solid #ddd;
+                            white-space: normal;
+                            word-wrap: break-word;
+                            overflow-wrap: anywhere;
+                            vertical-align: top;
+                        }
+
+                        .tabla-motivos th:nth-child(1),
+                        .tabla-motivos td:nth-child(1),
+                        .tabla-motivos th:nth-child(2),
+                        .tabla-motivos td:nth-child(2),
+                        .tabla-motivos th:nth-child(3),
+                        .tabla-motivos td:nth-child(3) {
+                            text-align: center;
+                            vertical-align: middle;
+                        }
+
+                        .tabla-motivos td:last-child {
+                            width: 65%;
+                        }
+                        </style>
+                        """,
+                        unsafe_allow_html=True
+                    )
+
+                    st.markdown(html_tabla, unsafe_allow_html=True)
                     
             with col_graf:
                 # ==================== 1) Recolectar PDO y RDOs ====================
@@ -1585,11 +1659,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
     # ======================== CMG ============================
     # =========================================================
         try:
-            st.markdown("### CMG HISTÓRICO")
-
-            # =====================================================
-            # 1. GRÁFICAS CMG POR BARRA
-            # =====================================================
+            st.markdown("### CMG")
             stem_file = "CMg - Barra ($ por MWh)"
             df_pdo = cargar_dataframe(pdo_res, stem_file)
 
@@ -1639,175 +1709,9 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
 
                 plt.close(fig)
 
-            # =====================================================
-            # 2. TABLA CMG HISTÓRICO
-            # =====================================================
-            st.markdown("---")
-            st.markdown("### COSTOS MARGINALES")
-
-            def hacer_columnas_unicas(cols):
-                conteo = {}
-                nuevas = []
-
-                for col in cols:
-                    if col not in conteo:
-                        conteo[col] = 0
-                        nuevas.append(col)
-                    else:
-                        conteo[col] += 1
-                        nuevas.append(f"{col}_{conteo[col]}")
-
-                return nuevas
-
-            def leer_cmg_dia(y, m, d, M):
-                from io import BytesIO
-
-                url = base_cmg.format(
-                    y=y,
-                    m=m,
-                    d=d,
-                    M=M
-                )
-
-                try:
-                    r = requests.get(
-                        url,
-                        verify=False,
-                        timeout=30
-                    )
-                    r.raise_for_status()
-                except Exception:
-                    return None
-
-                try:
-                    z = zipfile.ZipFile(BytesIO(r.content))
-
-                    # Buscar el Excel dentro del ZIP
-                    nombre_excel = None
-
-                    for f in z.namelist():
-                        if f.endswith(".xlsx") and "CMgCP" in f:
-                            nombre_excel = f
-                            break
-
-                    if nombre_excel is None:
-                        return None
-
-                    with z.open(nombre_excel) as f:
-                        df_raw = pd.read_excel(
-                            f,
-                            sheet_name="Cmg_Barra",
-                            header=None
-                        )
-
-                    # Encabezado: fila 3 → índice 2
-                    header_row = df_raw.iloc[2]
-
-                    # Detectar columnas desde B hasta el fin real
-                    col_validas = []
-
-                    for i in range(1, len(header_row)):
-                        if pd.isna(header_row[i]):
-                            break
-
-                        col_validas.append(i)
-
-                    headers = [
-                        str(header_row[i])
-                        for i in col_validas
-                    ]
-
-                    # Evitar columnas duplicadas
-                    headers = hacer_columnas_unicas(headers)
-
-                    # Datos: filas 4 a 51
-                    df = df_raw.iloc[
-                        3:51,
-                        col_validas
-                    ].copy()
-
-                    df.columns = headers
-
-                    df = (
-                        df
-                        .dropna(how="all")
-                        .reset_index(drop=True)
-                    )
-
-                    return df
-
-                except Exception:
-                    return None
-
-            # =====================================================
-            # 3. RECORRER RANGO DE FECHAS
-            # =====================================================
-            resultados = []
-            fecha_actual = ini
-
-            with st.spinner("Procesando CMG histórico…"):
-
-                while fecha_actual <= fin:
-
-                    y = fecha_actual.year
-                    m = f"{fecha_actual.month:02d}"
-                    d = f"{fecha_actual.day:02d}"
-                    M = MES_TXT_TITLE[
-                        int(m) - 1
-                    ]
-
-                    df_dia = leer_cmg_dia(
-                        y,
-                        m,
-                        d,
-                        M
-                    )
-
-                    if (
-                        df_dia is not None
-                        and not df_dia.empty
-                    ):
-                        df_dia["FECHA"] = fecha_actual
-                        resultados.append(df_dia)
-
-                    fecha_actual += timedelta(days=1)
-
-            # =====================================================
-            # 4. MOSTRAR TABLA
-            # =====================================================
-            if not resultados:
-
-                st.info(
-                    "No hay datos CMG para el rango seleccionado."
-                )
-
-            else:
-
-                df_final = pd.concat(
-                    resultados,
-                    ignore_index=True
-                )
-
-                # FECHA primero
-                cols = (
-                    ["FECHA"]
-                    + [
-                        c
-                        for c in df_final.columns
-                        if c != "FECHA"
-                    ]
-                )
-
-                df_final = df_final[cols]
-
-                # Tabla interactiva
-                st.dataframe(
-                    df_final
-                )
-
         except Exception as e:
             st.error(
-                f"Error en CMG Histórico: {e}"
+                f"Error en CMG: {e}"
             )
         
     with tab5:
@@ -1836,7 +1740,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             # Si quisieras mostrar el histórico IEOD por separado,
             # aquí podrías armar otra figura (matplotlib o plotly).
         except Exception as e:
-            st.warning(f"IEOD histórico no disponible: {e}")
+            pass
         
         # Histórico HIDRO de RPO A
         try:
@@ -1919,25 +1823,67 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 except Exception:
                     continue
         
-            # RDO-A último día (fin)
-            f_last = fin
-            yk, mk, dk = f_last.year, f_last.strftime("%m"), f_last.strftime("%d")
-            M_TXT = MES_TXT[f_last.month-1]
-            carpeta = work_dir / f"RDO_A_{yk}{mk}{dk}"
-            resultados = carpeta / f"YUPANA_{dk}{mk}A" / "RESULTADOS"
-            if not resultados.exists():
+            # Último día: prioridad IEOD → RDO A
+            lbl_fin = fin.strftime("%Y-%m-%d")
+
+            # 1. Primero buscar el último día en IEOD
+            ieod_ultimo = next(
+                (vals for fecha, vals in series_por_dia if fecha == lbl_fin),
+                None
+            )
+
+            if ieod_ultimo is not None and any(v != 0 for v in ieod_ultimo):
+                # IEOD: H. PASADA + H. REGULACION
+                series_7[lbl_fin] = ieod_ultimo[:48]
+
+            else:
+                # 2. Si no hay IEOD válido, usar RDO A
+                f_last = fin
+                yk, mk, dk = f_last.year, f_last.strftime("%m"), f_last.strftime("%d")
+                M_TXT = MES_TXT[f_last.month-1]
+
+                carpeta = work_dir / f"RDO_A_{yk}{mk}{dk}"
+                resultados = carpeta / f"YUPANA_{dk}{mk}A" / "RESULTADOS"
+
+                if not resultados.exists():
+                    try:
+                        r = requests.get(
+                            base_rdo.format(
+                                y=yk,
+                                m=mk,
+                                d=dk,
+                                M=M_TXT,
+                                letra="A"
+                            ),
+                            timeout=40
+                        )
+                        r.raise_for_status()
+
+                        with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+                            zf.extractall(path=carpeta)
+
+                    except Exception:
+                        pass
+
                 try:
-                    r = requests.get(base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra="A"), timeout=40)
-                    r.raise_for_status()
-                    with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
-                        zf.extractall(path=carpeta)
+                    th = rellenar_hasta_48(
+                        totales_hidro(
+                            cargar_dataframe(resultados, stem_hidro)
+                        )
+                    )
+
+                    tr = rellenar_hasta_48(
+                        totales_rer(
+                            cargar_dataframe(resultados, stem_rer),
+                            [x.upper() for x in barras_rer_up]
+                        )
+                    )
+
+                    if th and tr:
+                        series_7[lbl_fin] = suma_elementos(th, tr)
+
                 except Exception:
                     pass
-        
-            th = rellenar_hasta_48(totales_hidro(cargar_dataframe(resultados, stem_hidro)))
-            tr = rellenar_hasta_48(totales_rer(cargar_dataframe(resultados, stem_rer), [x.upper() for x in barras_rer_up]))
-            if th and tr:
-                series_7[f_last.strftime("%Y-%m-%d")] = suma_elementos(th, tr)
         
             # Plot interactivo
             if series_7:
@@ -2037,17 +1983,17 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     try:
                         r = requests.get(url_xlsx, timeout=30)
                         if r.status_code != 200: 
-                            st.write(f"❌ RDO {letra}: HTTP {r.status_code}") #AGREGADO
+                            st.write(f"❌ RDO {letra}: HTTP {r.status_code}") 
                             continue
 
                         xls = pd.ExcelFile(io.BytesIO(r.content))
                         df = pd.read_excel(xls, xls.sheet_names[0], header=None, engine="openpyxl")
 
 
-                        for fila in range(df.shape[0]): #AGREGADO
+                        for fila in range(df.shape[0]): 
                             for col in range(df.shape[1]):
                                 valor = str(df.iat[fila, col]).upper()
-                                if "TOTAL GENERACION COES" in valor: #AGREGADO
+                                if "TOTAL GENERACION COES" in valor: 
                                     st.write(
                                         f"✅ ENCONTRADO RDO {letra}: "
                                         f"fila={fila}, columna={col}, valor={valor}"
@@ -2088,8 +2034,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                         curvas.append((letra, df_curva))
                         letras_validas.append(letra)
             
-                    except Exception as e:
-                        st.error(f"💥 ERROR RDO {letra}: {type(e).__name__}: {e}")
+                    except Exception as e: 
                         continue
 
                 if curvas:
@@ -2153,16 +2098,21 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                         pass
                 cur += timedelta(days=1)
             
-            # ==== ÚLTIMO DÍA: DEMANDA fusionada por tramos ==== 
+            # ==== ÚLTIMO DÍA: PRIORIDAD IEOD → RDO ====
             lbl_fin = fin.strftime("%Y-%m-%d")
-            
-            if lbl_fin in series_dia:
-                vals_finales = series_dia[lbl_fin][:48]
-                series_dem_7[lbl_fin] = vals_finales
+
+            # 1. Primero usar IEOD
+            if lbl_fin in series_ieod_dem:
+                series_dem_7[lbl_fin] = series_ieod_dem[lbl_fin][:48]
+
+            # 2. Si NO existe IEOD, usar RDO
+            elif lbl_fin in series_dia:
+                series_dem_7[lbl_fin] = series_dia[lbl_fin][:48]
+
             else:
-                st.warning(f"⚠️ No se encontró curva en memoria para {lbl_fin}. Se intentará usar IEOD.")
-                if lbl_fin in series_ieod_dem:
-                    series_dem_7[lbl_fin] = series_ieod_dem[lbl_fin][:48]
+                st.warning(
+                    f"⚠️ No se encontró demanda para {lbl_fin} ni en IEOD ni en RDO."
+                )
                     
             # ------------ PLOTLY INTERACTIVO (FUSIÓN) ------------
             if series_dem_7:
@@ -2236,7 +2186,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             pass
         
         # =========================================================
-        # ==================== HISTORICO EÓLICO ====================
+        # ==================== HISTORICO EÓLICO ===================
         # =========================================================
         st.markdown("### EÓLICA")
         
@@ -2310,9 +2260,22 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                         pass
                 cur += timedelta(days=1)
         
+            # ------------ ÚLTIMO DÍA: PRIORIDAD IEOD → RDO A ------------
             lbl_fin = fin.strftime("%Y-%m-%d")
-            if lbl_fin in series_eol_dia:
+
+            # 1. Primero intentar usar IEOD
+            if lbl_fin in series_ieod_eol:
+                series_eol_7[lbl_fin] = series_ieod_eol[lbl_fin][:48]
+
+            # 2. Si no existe IEOD, usar RDO A
+            elif lbl_fin in series_eol_dia:
                 series_eol_7[lbl_fin] = series_eol_dia[lbl_fin][:48]
+
+            else:
+                st.warning(
+                    f"⚠️ No se encontró generación eólica para {lbl_fin} "
+                    "ni en IEOD ni en RDO A."
+                )
         
             # ------------ PLOTLY INTERACTIVO (FUSIÓN EÓLICA) ------------
             if series_eol_7:
@@ -2455,9 +2418,22 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                         pass
                 cur += timedelta(days=1)
         
+            # ------------ ÚLTIMO DÍA: PRIORIDAD IEOD → RDO A ------------
             lbl_fin = fin.strftime("%Y-%m-%d")
-            if lbl_fin in series_sol_dia:
+
+            # 1. Primero usar IEOD
+            if lbl_fin in series_ieod_solar:
+                series_solar_7[lbl_fin] = series_ieod_solar[lbl_fin][:48]
+
+            # 2. Si no hay IEOD válido, usar RDO A
+            elif lbl_fin in series_sol_dia:
                 series_solar_7[lbl_fin] = series_sol_dia[lbl_fin][:48]
+
+            else:
+                st.warning(
+                    f"⚠️ No se encontró generación solar para {lbl_fin} "
+                    "ni en IEOD ni en RDO A."
+                )
         
             # ------------ PLOTLY INTERACTIVO (RESPETANDO LÓGICA DE CEROS) ------------
             if series_solar_7:
@@ -2544,6 +2520,9 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         # ================== HISTORICO TÉRMICA ====================  
         # =========================================================
         st.markdown("### TÉRMICA")
+
+        stem_term = "Termica - Despacho (MW)"
+        stem_rer = "Rer y No COES - Despacho (MW)"
         
         # ---------- HISTÓRICO IEOD (TÉRMICA) ----------
         try:
@@ -2623,11 +2602,22 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     except Exception:
                         continue
         
-                df_term = cargar_dataframe(resultados, stem_term)
-                # suma sobre TODAS las térmicas
-                vals = rellenar_hasta_48(totales_rer(df_term, grupos_gas))
-                if vals and any(v != 0 for v in vals):
-                    series_term_dia[f.strftime("%Y-%m-%d")] = vals
+                df_rdo_term = cargar_dataframe(resultados, stem_term)
+                df_rdo_rer  = cargar_dataframe(resultados, stem_rer)
+
+                t_term = rellenar_hasta_48(
+                    totales_hidro(df_rdo_term)
+                )
+
+                t_rer = rellenar_hasta_48(
+                    totales_rer(df_rdo_rer, grupos_gas)
+                )
+
+                if t_term and t_rer:
+                    vals = suma_elementos(t_term, t_rer)
+
+                    if vals and any(v != 0 for v in vals):
+                        series_term_dia[f.strftime("%Y-%m-%d")] = vals
         
         except Exception:
             pass
@@ -2653,10 +2643,22 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                         pass
                 cur += timedelta(days=1)
         
-            # último día desde RPO A
+            # ---------- ÚLTIMO DÍA: PRIORIDAD IEOD → RDO A ----------
             lbl_fin = fin.strftime("%Y-%m-%d")
-            if lbl_fin in series_term_dia:
+
+            # 1. Primero usar IEOD
+            if lbl_fin in series_ieod_term:
+                series_term_7[lbl_fin] = series_ieod_term[lbl_fin][:48]
+
+            # 2. Si no existe IEOD válido, usar RDO A
+            elif lbl_fin in series_term_dia:
                 series_term_7[lbl_fin] = series_term_dia[lbl_fin][:48]
+
+            else:
+                st.warning(
+                    f"⚠️ No se encontró generación térmica para {lbl_fin} "
+                    "ni en IEOD ni en RDO A."
+                )
         
             # ---------- PLOTLY INTERACTIVO ----------
             if series_term_7:
@@ -4253,113 +4255,8 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                             
                             st.pyplot(fig)
                             plt.close(fig) 
-            
+    
     with tab10:
-        # =========================================================
-        # ================ HISTÓRICO ELECTRO ORIENTE ==============
-        # =========================================================
-        try:
-            st.markdown("### Histórico Electro Oriente")
-    
-            fecha_inicio = ini_eo
-            fecha_fin = fin_eo
-    
-            if gen_generar:
-                ruta_descarga = work_dir / "Electro_Oriente"
-                ruta_descarga.mkdir(parents=True, exist_ok=True)
-    
-                import urllib3
-                urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-    
-                fecha_actual = datetime.combine(fecha_inicio, datetime.min.time())
-                resultados = []
-    
-                with st.spinner("Descargando y procesando archivos de Electro Oriente..."):
-                    while fecha_actual <= datetime.combine(fecha_fin, datetime.min.time()):
-                        d = f"{fecha_actual.day:02d}"
-                        m = f"{fecha_actual.month:02d}"
-                        y = str(fecha_actual.year)
-                        M = MES_TXT[int(m) - 1]
-                        ddmm = f"{d}{m}"
-    
-                        # ✅ Usa la plantilla global
-                        url = base_ieod.format(y=y, m=m, M=M, d=d, ddmm=ddmm)
-                        nombre_archivo = f"AnexoA_{d}{m}_{y}.xlsx"
-                        ruta_archivo = ruta_descarga / nombre_archivo
-    
-                        try:
-                            if not ruta_archivo.exists():
-                                r = requests.get(url, verify=False, timeout=30)
-                                if r.status_code == 200 and r.content:
-                                    ruta_archivo.write_bytes(r.content)
-                                else:
-                                    fecha_actual += timedelta(days=1)
-                                    continue
-    
-                            df = pd.read_excel(ruta_archivo, sheet_name="DESPACHO_EJECUTADO", header=None)
-                            fila_titulos = df.iloc[8]
-                            col_index = None
-                            for i, valor in enumerate(fila_titulos):
-                                if isinstance(valor, str) and "ELECTRO ORIENTE" in valor.upper():
-                                    col_index = i
-                                    break
-                            if col_index is None:
-                                fecha_actual += timedelta(days=1)
-                                continue
-    
-                            valores = pd.to_numeric(df.iloc[10:58, col_index], errors="coerce")
-                            promedio = valores.mean(skipna=True)
-                            resultados.append({"Fecha": fecha_actual, "Promedio": promedio})
-    
-                        except Exception:
-                            pass
-    
-                        fecha_actual += timedelta(days=1)
-                        
-                if resultados:
-                    df_res = pd.DataFrame(resultados)
-                    df_res.sort_values("Fecha", inplace=True)
-    
-                    # ==================== Gráfico ====================
-                    fig, ax = plt.subplots(figsize=(10, 5))
-                    ax.plot(df_res["Fecha"], df_res["Promedio"],
-                            marker='o', color='blue', linewidth=2,
-                            markersize=3, markerfacecolor='white', markeredgewidth=0.7)
-    
-                    ax.set_title("Promedio Diario", fontsize=14, fontweight='bold')
-                    ax.set_xlabel("Fecha")
-                    ax.set_ylabel("MW")
-                    ax.grid(True, linestyle="--", alpha=0.6)
-                    ax.xaxis.set_major_locator(mdates.DayLocator(interval=15))
-    
-                    meses_es = {
-                        'Jan': 'Ene', 'Feb': 'Feb', 'Mar': 'Mar', 'Apr': 'Abr', 'May': 'May', 'Jun': 'Jun',
-                        'Jul': 'Jul', 'Aug': 'Ago', 'Sep': 'Sep', 'Oct': 'Oct', 'Nov': 'Nov', 'Dec': 'Dic'
-                    }
-                    def formatear_fecha_espanol(x, pos=None):
-                        fecha = mdates.num2date(x)
-                        mes_en = fecha.strftime('%b')
-                        mes_es = meses_es.get(mes_en, mes_en)
-                        return fecha.strftime(f'%d-{mes_es}')
-    
-                    ax.xaxis.set_major_formatter(plt.FuncFormatter(formatear_fecha_espanol))
-                    plt.xticks(rotation=45, ha='right', fontsize=7)
-                    plt.tight_layout()
-                    st.pyplot(fig)
-                    plt.close(fig)
-    
-                    # ==================== Tabla ====================
-                    df_res["Fecha"] = df_res["Fecha"].dt.strftime("%d/%m/%Y")
-                    st.dataframe(df_res, width="stretch")
-    
-                else:
-                    st.warning("No se encontraron datos para el rango seleccionado.")
-            else:
-                st.info("Selecciona las fechas en el panel lateral y presiona **Generar** para ejecutar este análisis.")
-        except Exception:
-            st.error("Ocurrió un error al generar el reporte de Electro Oriente.")
-    
-    with tab11:
         # =========================================================
         # ======================= TÉRMICAS ======================== 
         # =========================================================
@@ -4483,120 +4380,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 procesar_central(nombre, unidades, y, m, d, M, rdo_letras)
         else:
             st.info("Presiona **Generar** para ver las gráficas térmicas fusionadas.")
-            
-    with tab12:
-        # =========================================================
-        # ================== DESPACHO EJECUTADO ===================
-        # =========================================================
-        st.markdown("### DESPACHO EJECUTADO")
         
-        # ===== función para evitar columnas duplicadas =====
-        def hacer_columnas_unicas(cols):
-            conteo = {}
-            nuevas = []
-    
-            for col in cols:
-                if col not in conteo:
-                    conteo[col] = 0
-                    nuevas.append(col)
-                else:
-                    conteo[col] += 1
-                    nuevas.append(f"{col}_{conteo[col]}")
-    
-            return nuevas
-    
-        # ===== función para leer IEOD por día =====
-        def leer_ieod_dia(y, m, d, M):
-            from io import BytesIO
-    
-            ddmm = f"{d}{m}"
-            url = base_ieod.format(y=y, m=m, d=d, M=M, ddmm=ddmm)
-    
-            try:
-                r = requests.get(url, verify=False, timeout=30)
-                r.raise_for_status()
-            except:
-                return None
-    
-            try:
-                xls = pd.ExcelFile(BytesIO(r.content))
-    
-                if "DESPACHO_EJECUTADO" not in xls.sheet_names:
-                    return None
-    
-                df_raw = pd.read_excel(
-                    xls,
-                    sheet_name="DESPACHO_EJECUTADO",
-                    header=None
-                )
-    
-                # ===== TODAS las columnas =====
-                todas_cols = list(range(df_raw.shape[1]))
-    
-                # ===== encabezados (filas 5, 9, 10) =====
-                headers = []
-                for col in todas_cols:
-                    h1 = str(df_raw.iloc[4, col]) if not pd.isna(df_raw.iloc[4, col]) else ""
-                    h2 = str(df_raw.iloc[8, col]) if not pd.isna(df_raw.iloc[8, col]) else ""
-                    h3 = str(df_raw.iloc[9, col]) if not pd.isna(df_raw.iloc[9, col]) else ""
-    
-                    header = " | ".join([h for h in [h1, h2, h3] if h.strip() != ""])
-                    headers.append(header if header else f"COL_{col}")
-    
-                # ===== RECORTE por columna "MW" =====
-                col_validas = []
-                for i, h in enumerate(headers):
-                    col_validas.append(i)
-                    if h.strip() == "MW":
-                        break
-    
-                headers = [headers[i] for i in col_validas]
-    
-                # ===== hacer encabezados únicos =====
-                headers = hacer_columnas_unicas(headers)
-    
-                # ===== data =====
-                df = df_raw.iloc[10:, col_validas].copy()
-                df.columns = headers
-    
-                # eliminar filas vacías
-                df = df.dropna(how="all").reset_index(drop=True)
-    
-                return df
-    
-            except:
-                return None
-    
-        # ===== recorrer rango =====
-        resultados = []
-        fecha_actual = ini
-    
-        with st.spinner("Procesando IEOD (Despacho Ejecutado)…"):
-            while fecha_actual <= fin:
-                y = fecha_actual.year
-                m = f"{fecha_actual.month:02d}"
-                d = f"{fecha_actual.day:02d}"
-                M = MES_TXT[int(m) - 1]
-    
-                df_dia = leer_ieod_dia(y, m, d, M)
-    
-                if df_dia is not None and not df_dia.empty:
-                    df_dia["FECHA"] = fecha_actual
-                    resultados.append(df_dia)
-    
-                fecha_actual += timedelta(days=1)
-    
-        # ===== mostrar =====
-        if not resultados:
-            st.info("No hay datos disponibles para el rango seleccionado.")
-        else:
-            df_final = pd.concat(resultados, ignore_index=True)
-    
-            cols = ["FECHA"] + [c for c in df_final.columns if c != "FECHA"]
-            df_final = df_final[cols]
-    
-            st.dataframe(df_final)
-            
 # -----------------------------------------------------------------------------
 # ------------------------------------ PDF ------------------------------------
 # -----------------------------------------------------------------------------        
@@ -4630,7 +4414,7 @@ fin = fecha_sel
 work_dir_str = st.sidebar.text_input(
     "Carpeta de trabajo",
     value=str(Path.home() / "Descargas_T"),
-    disabled=True
+    disabled=False
 )
 
 work_dir = Path(work_dir_str); work_dir.mkdir(parents=True, exist_ok=True)
@@ -4643,18 +4427,6 @@ MESES = [
 st.sidebar.subheader("Potencia Activa (Solares + Eólicas)")
 MES = st.sidebar.selectbox("Mes", MESES, index=0) 
 AÑO = st.sidebar.selectbox("Año", [2024, 2025, 2026], index=2)
-
-st.sidebar.subheader("Histórico Electro Oriente")
-ini_eo = st.sidebar.date_input(
-    "Fecha de inicio (Electro Oriente)",
-    value=date(2025, 1, 1),
-    format="DD/MM/YYYY"
-)
-fin_eo = st.sidebar.date_input(
-    "Fecha de fin (Electro Oriente)",
-    value=date(2025, 1, 10),
-    format="DD/MM/YYYY"
-)
 
 gen_generar = st.sidebar.button("Generar", type="primary")
 
