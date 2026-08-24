@@ -280,7 +280,7 @@ def _build_halfhour_labels():
     return labels
 
 def extraer_listas_alfa_beta_gamma_ultimo(y, m, d, M, destino):
-    for L in "FEDCB":
+    for L in "GFEDCB":
         p = _descargar_y_validar_indices(y, m, d, M, destino, L)
         if p is None: continue
         df = pd.read_excel(p, header=None, engine="openpyxl")
@@ -1035,6 +1035,8 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             tot_rer   = rellenar_hasta_48(totales_rer(df_pdo_rer, [x.upper() for x in barras_rer]))
             if tot_hidro and tot_rer:
                 series_h["PDO"] = suma_elementos(tot_hidro, tot_rer)
+                pdo_hidro_curva = series_h["PDO"].copy()
+                st.session_state["pdo_hidro_curva"] = pdo_hidro_curva
         
             for letra in rdo_letras:
                 rdo_res = work_dir / f"RDO_{letra}_{fecha_str}" / f"YUPANA_{ddmm}{letra}" / "RESULTADOS"
@@ -1210,6 +1212,8 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             vals_pdo   = rellenar_hasta_48(totales_rer(df_pdo_rer, [x.upper() for x in barras_eol]))
             if vals_pdo:
                 series_rer["PDO"] = vals_pdo
+                pdo_eol_curva = series_rer["PDO"].copy()
+                st.session_state["pdo_eol_curva"] = pdo_eol_curva
         
             for letra in rdo_letras:
                 rdo_res = work_dir / f"RDO_{letra}_{fecha_str}" / f"YUPANA_{ddmm}{letra}" / "RESULTADOS"
@@ -1371,6 +1375,8 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             vals_pdo   = rellenar_hasta_48(totales_rer(df_pdo_sol, [x.upper() for x in barras_solar]))
             if vals_pdo:
                 series_sol["PDO"] = vals_pdo
+                pdo_sol_curva = series_sol["PDO"].copy()
+                st.session_state["pdo_sol_curva"] = pdo_sol_curva
         
             for letra in rdo_letras:
                 rdo_res = work_dir / f"RDO_{letra}_{fecha_str}" / f"YUPANA_{ddmm}{letra}" / "RESULTADOS"
@@ -1534,6 +1540,8 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         
             if tot_term and tot_rer_t:
                 series_t["PDO"] = suma_elementos(tot_term, tot_rer_t)
+                pdo_term_curva = series_t["PDO"].copy()
+                st.session_state["pdo_term_curva"] = pdo_term_curva
         
             # --- RDOs A–E ---
             for letra in rdo_letras:
@@ -1787,41 +1795,154 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 "EL CARMEN","CH MANTA","SANTA ROSA 1","SANTA ROSA 2","TUPURI","CH HUALLIN"
             ]
         
-            # IEOD: desde ini hasta fin-1
+            # IEOD → RDO A para días anteriores al último
             ini_ieod = ini
             fin_ieod = fin - timedelta(days=1)
             dias_ieod = (fin_ieod - ini_ieod).days + 1 if fin_ieod >= ini_ieod else 0
-        
+
             for k in range(dias_ieod):
+
                 f = ini_ieod + timedelta(days=k)
-                y2, m2, d2 = f.year, f.month, f.day
-                M2 = MES_TXT[m2-1]
+                lbl = f.strftime("%Y-%m-%d")
+
+                # =====================================================
+                # 1. PRIMERO INTENTAR IEOD
+                # =====================================================
+                usado_ieod = False
+
                 try:
+                    y2, m2, d2 = f.year, f.month, f.day
+                    M2 = MES_TXT[m2-1]
+
                     fb = _lee_ieod_bytes(y2, m2, M2, d2)
-        
-                    def _find_cols(df):
-                        def _n(s):
-                            import re
-                            return re.sub(r"\s+"," ",str(s).strip()).upper()
-                        c_pas = c_reg = None
-                        for c in df.columns:
-                            k = _n(c)
-                            if k == "H. PASADA" and c_pas is None:
-                                c_pas = c
-                            if k == "H. REGULACION" and c_reg is None:
-                                c_reg = c
-                        return c_pas, c_reg
-        
-                    df = pd.read_excel(fb, sheet_name="TIPO_RECURSO", header=5, engine="openpyxl")
-                    c_pas, c_reg = _find_cols(df)
+
+                    df = pd.read_excel(
+                        fb,
+                        sheet_name="TIPO_RECURSO",
+                        header=5,
+                        engine="openpyxl"
+                    )
+
+                    c_pas, c_reg = _find_cols_ieod(df)
+
                     if c_pas and c_reg:
+
                         sub = df.iloc[0:48, :]
-                        pas = pd.to_numeric(sub[c_pas], errors="coerce").fillna(0.0).astype(float).tolist()
-                        reg = pd.to_numeric(sub[c_reg], errors="coerce").fillna(0.0).astype(float).tolist()
-                        vals = [pas[i] + reg[i] for i in range(48)]
-                        series_7[f.strftime("%Y-%m-%d")] = vals
+
+                        pas = pd.to_numeric(
+                            sub[c_pas],
+                            errors="coerce"
+                        ).fillna(0.0).astype(float).tolist()
+
+                        reg = pd.to_numeric(
+                            sub[c_reg],
+                            errors="coerce"
+                        ).fillna(0.0).astype(float).tolist()
+
+                        vals = [
+                            pas[i] + reg[i]
+                            for i in range(48)
+                        ]
+
+                        if any(v != 0 for v in vals):
+                            series_7[lbl] = vals
+                            usado_ieod = True
+
                 except Exception:
-                    continue
+                    pass
+
+                # =====================================================
+                # 2. SI NO HAY IEOD → BUSCAR Y FUSIONAR RDO A → G
+                # =====================================================
+                if not usado_ieod:
+
+                    rdos_hidro = {}
+
+                    for letra in ["A", "B", "C", "D", "E", "F", "G"]:
+
+                        yk = f.year
+                        mk = f.strftime("%m")
+                        dk = f.strftime("%d")
+                        M_TXT = MES_TXT[f.month - 1]
+
+                        carpeta = work_dir / f"RDO_{letra}_{yk}{mk}{dk}"
+
+                        resultados = (
+                            carpeta
+                            / f"YUPANA_{dk}{mk}{letra}"
+                            / "RESULTADOS"
+                        )
+
+                        # Descargar si no existe
+                        if not resultados.exists():
+                            try:
+                                r = requests.get(
+                                    base_rdo.format(
+                                        y=yk,
+                                        m=mk,
+                                        d=dk,
+                                        M=M_TXT,
+                                        letra=letra
+                                    ),
+                                    timeout=40
+                                )
+                                r.raise_for_status()
+
+                                with zipfile.ZipFile(
+                                    io.BytesIO(r.content)
+                                ) as zf:
+                                    zf.extractall(path=carpeta)
+
+                            except Exception:
+                                continue
+
+                        try:
+                            th = rellenar_hasta_48(
+                                totales_hidro(
+                                    cargar_dataframe(
+                                        resultados,
+                                        stem_hidro
+                                    )
+                                )
+                            )
+
+                            tr = rellenar_hasta_48(
+                                totales_rer(
+                                    cargar_dataframe(
+                                        resultados,
+                                        stem_rer
+                                    ),
+                                    [x.upper() for x in barras_rer_up]
+                                )
+                            )
+
+                            if th and tr:
+                                rdos_hidro[letra] = suma_elementos(th, tr)
+
+                        except Exception:
+                            continue
+
+                    # =====================================================
+                    # FUSIÓN RDO A → G
+                    # =====================================================
+                    if rdos_hidro:
+
+                        letras_orden = sorted(rdos_hidro.keys())
+
+                        serie_final = rdos_hidro[letras_orden[0]].copy()
+
+                        for letra in letras_orden[1:]:
+
+                            nueva = rdos_hidro[letra]
+
+                            for i in range(48):
+
+                                if nueva[i] != 0:
+                                    serie_final[i:] = nueva[i:]
+                                    break
+
+                        if any(v != 0 for v in serie_final):
+                            series_7[lbl] = serie_final
         
             # Último día: prioridad IEOD → RDO A
             lbl_fin = fin.strftime("%Y-%m-%d")
@@ -1901,8 +2022,16 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         
                 for lbl in fechas_orden:
                     fobj = datetime.strptime(lbl, "%Y-%m-%d").date()
-                    vals = series_7[lbl]
-                    y_all.extend(vals)
+                    vals_raw = series_7[lbl]
+                    vals = [
+                        None if v is None or v == 0 else v
+                        for v in vals_raw[:48]
+                    ]
+
+                    y_all.extend(
+                        v for v in vals
+                        if v is not None
+                    )
         
                     if fobj == fin:
                         # Día actual → rojo, más grueso
@@ -1965,153 +2094,275 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     pass
                 cur += timedelta(days=1)
                 
-            # ------------ HISTÓRICO RPO A (lectura directa y verificación de valores) ------------
-            series_dia = {}
-            
-            try:
-                yk = fin.year
-                mk = fin.strftime("%m")
-                dk = fin.strftime("%d")
-                M_TXT = MES_TXT[fin.month - 1]
-            
-                letras_validas = []
+            # ------------ HISTÓRICO RDO A → G ------------
+            series_rdo_dem = {}
+
+            for k in range((fin - ini).days + 1):
+
+                f = ini + timedelta(days=k)
+                lbl = f.strftime("%Y-%m-%d")
+
+                yk = f.year
+                mk = f.strftime("%m")
+                dk = f.strftime("%d")
+                M_TXT = MES_TXT[f.month - 1]
+
                 curvas = []
-                
-                for letra in RDO_LETRAS_DEF:  # ["A","B","C","D","E","F"]
-                    url_xlsx = base_motivo.format(y=yk, m=mk, M=M_TXT, d=dk, dd=dk, mm=mk, L=letra)
-            
+
+                # =====================================================
+                # BUSCAR RDO A → G
+                # =====================================================
+                for letra in RDO_LETRAS_DEF:   # A, B, C, D, E, F, G
+
+                    url_xlsx = base_motivo.format(
+                        y=yk,
+                        m=mk,
+                        M=M_TXT,
+                        d=dk,
+                        dd=dk,
+                        mm=mk,
+                        L=letra
+                    )
+
                     try:
                         r = requests.get(url_xlsx, timeout=30)
-                        if r.status_code != 200: 
-                            st.write(f"❌ RDO {letra}: HTTP {r.status_code}") 
+
+                        if r.status_code != 200:
                             continue
 
-                        xls = pd.ExcelFile(io.BytesIO(r.content))
-                        df = pd.read_excel(xls, xls.sheet_names[0], header=None, engine="openpyxl")
+                        xls = pd.ExcelFile(
+                            io.BytesIO(r.content)
+                        )
 
+                        df = pd.read_excel(
+                            xls,
+                            xls.sheet_names[0],
+                            header=None,
+                            engine="openpyxl"
+                        )
 
-                        for fila in range(df.shape[0]): 
-                            for col in range(df.shape[1]):
-                                valor = str(df.iat[fila, col]).upper()
-                                if "TOTAL GENERACION COES" in valor: 
-                                    st.write(
-                                        f"✅ ENCONTRADO RDO {letra}: "
-                                        f"fila={fila}, columna={col}, valor={valor}"
-                                    )
+                        # =================================================
+                        # Buscar TOTAL GENERACION COES
+                        # =================================================
+                        col_idx = 99       # CV
 
-                        # Buscar primero en CV; si no está, usar CX
-                        col_idx = 99  # CV
+                        titulo = str(
+                            df.iat[5, col_idx]
+                        ).strip().upper()
 
-                        titulo = str(df.iat[5, col_idx]).strip().upper()
                         titulo_norm = ''.join(
-                            c for c in unicodedata.normalize("NFD", titulo)
+                            c for c in unicodedata.normalize(
+                                "NFD",
+                                titulo
+                            )
                             if unicodedata.category(c) != "Mn"
                         )
 
-                        # Si no está en CV, probar CX
+                        # Si no está en CV → probar CX
                         if "TOTAL GENERACION COES" not in titulo_norm:
-                            col_idx = 101  # CX
 
-                            titulo = str(df.iat[5, col_idx]).strip().upper()
+                            col_idx = 101   # CX
+
+                            titulo = str(
+                                df.iat[5, col_idx]
+                            ).strip().upper()
+
                             titulo_norm = ''.join(
-                                c for c in unicodedata.normalize("NFD", titulo)
+                                c for c in unicodedata.normalize(
+                                    "NFD",
+                                    titulo
+                                )
                                 if unicodedata.category(c) != "Mn"
                             )
 
                         if "TOTAL GENERACION COES" not in titulo_norm:
-                            st.write(f"❌ RDO {letra} descartado: no se encontró TOTAL GENERACION COES")
                             continue
-                            
-                        horas = df.iloc[6:6+50, 1].astype(str).str.strip().tolist()
-                        valores = pd.to_numeric(df.iloc[6:6+50, col_idx], errors="coerce").fillna(0).tolist()
-            
-                        # limpiar horas inválidas
-                        pares = [(h, v) for h, v in zip(horas, valores) if re.match(r"^\d{2}:\d{2}$", h)]
+
+                        # =================================================
+                        # Extraer horas y valores
+                        # =================================================
+                        horas = (
+                            df.iloc[6:6+50, 1]
+                            .astype(str)
+                            .str.strip()
+                            .tolist()
+                        )
+
+                        valores = pd.to_numeric(
+                            df.iloc[6:6+50, col_idx],
+                            errors="coerce"
+                        ).fillna(0).tolist()
+
+                        pares = [
+                            (h, v)
+                            for h, v in zip(horas, valores)
+                            if re.match(r"^\d{2}:\d{2}$", h)
+                        ]
+
                         if not pares:
                             continue
-            
-                        df_curva = pd.DataFrame(pares, columns=["HORA", "TOTAL_GENERACION_COES"])
-                        curvas.append((letra, df_curva))
-                        letras_validas.append(letra)
-            
-                    except Exception as e: 
+
+                        df_curva = pd.DataFrame(
+                            pares,
+                            columns=[
+                                "HORA",
+                                "TOTAL_GENERACION_COES"
+                            ]
+                        )
+
+                        curvas.append(
+                            (letra, df_curva)
+                        )
+
+                    except Exception:
                         continue
 
+                # =====================================================
+                # FUSIONAR RDO A → G
+                # =====================================================
                 if curvas:
-                    curvas.sort(key=lambda x: x[0])
+
+                    curvas.sort(
+                        key=lambda x: x[0]
+                    )
+
                     df_final = curvas[0][1].copy()
-            
+
                     for i in range(1, len(curvas)):
+
                         letra, df_i = curvas[i]
-                        inters = set(df_final["HORA"]) & set(df_i["HORA"])
+
+                        inters = (
+                            set(df_final["HORA"])
+                            &
+                            set(df_i["HORA"])
+                        )
+
                         if not inters:
                             continue
-                        primera_hora = sorted(list(inters))[0]
-                        idx = df_final.index[df_final["HORA"] == primera_hora][0]
-                        df_final = pd.concat([df_final.iloc[:idx], df_i], ignore_index=True)
-            
-                    # Normaliza y muestra resultado
-                    df_final = df_final[df_final["HORA"].str.match(r"^\d{2}:\d{2}$", na=False)]
-                    df_final = df_final.drop_duplicates(subset=["HORA"], keep="last").reset_index(drop=True)
 
-                    # Guardar en memoria respetando la hora real de cada valor
+                        primera_hora = sorted(
+                            list(inters)
+                        )[0]
+
+                        idx = df_final.index[
+                            df_final["HORA"] == primera_hora
+                        ][0]
+
+                        df_final = pd.concat(
+                            [
+                                df_final.iloc[:idx],
+                                df_i
+                            ],
+                            ignore_index=True
+                        )
+
+                    # =================================================
+                    # NORMALIZAR
+                    # =================================================
+                    df_final = df_final[
+                        df_final["HORA"].str.match(
+                            r"^\d{2}:\d{2}$",
+                            na=False
+                        )
+                    ]
+
+                    df_final = (
+                        df_final
+                        .drop_duplicates(
+                            subset=["HORA"],
+                            keep="last"
+                        )
+                        .reset_index(drop=True)
+                    )
+
+                    # =================================================
+                    # MAPEAR A 48 INTERVALOS
+                    # =================================================
                     horas_eje = [
-                        (datetime.combine(fin, datetime.min.time()) + timedelta(minutes=30 * (i + 1))).strftime("%H:%M")
+                        (
+                            datetime.combine(
+                                f,
+                                datetime.min.time()
+                            )
+                            + timedelta(
+                                minutes=30 * (i + 1)
+                            )
+                        ).strftime("%H:%M")
                         for i in range(48)
                     ]
 
                     serie_48 = [None] * 48
 
                     for _, fila in df_final.iterrows():
-                        hora = str(fila["HORA"]).strip()
-                        valor = fila["TOTAL_GENERACION_COES"]
 
-                        # 23:59 representa el cierre del día → colocarlo en 00:00
+                        hora = str(
+                            fila["HORA"]
+                        ).strip()
+
+                        valor = fila[
+                            "TOTAL_GENERACION_COES"
+                        ]
+
+                        # 23:59 → cierre del día → 00:00
                         if hora == "23:59":
                             hora = "00:00"
 
                         if hora in horas_eje:
-                            idx = horas_eje.index(hora)
+
+                            idx = horas_eje.index(
+                                hora
+                            )
+
                             serie_48[idx] = valor
 
-                    series_dia[fin.strftime("%Y-%m-%d")] = serie_48
+                    if any(
+                        v is not None and v != 0
+                        for v in serie_48
+                    ):
+                        series_rdo_dem[lbl] = serie_48
             
-            except Exception as e:
-                st.error(f"💥 ERROR GENERAL DEMANDA: {type(e).__name__}: {e}")
-            
-            # ------------ FUSIÓN IEOD + RPO A (último día) ------------
+            # ------------ FUSIÓN (último día) ------------
             series_dem_7 = {}
             cur = ini
         
-            # Añadir días IEOD (todos menos el último)
+            # =====================================================
+            # IEOD → RDO A-G
+            # =====================================================
             while cur < fin:
+
                 lbl = cur.strftime("%Y-%m-%d")
+
+                # 1. PRIORIDAD: IEOD
                 if lbl in series_ieod_dem:
-                    series_dem_7[lbl] = series_ieod_dem[lbl][:48]
-                else:
-                    try:
-                        fb = _lee_ieod_bytes(cur.year, cur.month, MES_TXT[cur.month-1], cur.day)
-                        vals = _extrae_demanda_48(fb)
-                        if vals:
-                            series_dem_7[lbl] = vals[:48]
-                    except Exception:
-                        pass
+
+                    series_dem_7[lbl] = (
+                        series_ieod_dem[lbl][:48]
+                    )
+
+                # 2. SI NO HAY IEOD → RDO A-G FUSIONADO
+                elif lbl in series_rdo_dem:
+
+                    series_dem_7[lbl] = (
+                        series_rdo_dem[lbl][:48]
+                    )
+
                 cur += timedelta(days=1)
             
-            # ==== ÚLTIMO DÍA: PRIORIDAD IEOD → RDO ====
+            # ==== ÚLTIMO DÍA: PRIORIDAD IEOD → RDO A-G ====
             lbl_fin = fin.strftime("%Y-%m-%d")
 
-            # 1. Primero usar IEOD
+            # 1. Primero IEOD
             if lbl_fin in series_ieod_dem:
                 series_dem_7[lbl_fin] = series_ieod_dem[lbl_fin][:48]
 
-            # 2. Si NO existe IEOD, usar RDO
-            elif lbl_fin in series_dia:
-                series_dem_7[lbl_fin] = series_dia[lbl_fin][:48]
+            # 2. Si NO existe IEOD → RDO A-G fusionado
+            elif lbl_fin in series_rdo_dem:
+                series_dem_7[lbl_fin] = series_rdo_dem[lbl_fin][:48]
 
             else:
                 st.warning(
-                    f"⚠️ No se encontró demanda para {lbl_fin} ni en IEOD ni en RDO."
+                    f"⚠️ No se encontró demanda para {lbl_fin} ni en IEOD ni en RDO A-G."
                 )
                     
             # ------------ PLOTLY INTERACTIVO (FUSIÓN) ------------
@@ -2134,9 +2385,11 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     fobj = datetime.strptime(l, "%Y-%m-%d").date()
                     vals = [
                         None if (
-                            v is None or
-                            (isinstance(v, float) and math.isnan(v))
-                        ) else v
+                            v is None
+                            or (isinstance(v, float) and math.isnan(v))
+                            or v == 0
+                        )
+                        else v
                         for v in series_dem_7[l][:48]
                     ]
 
@@ -2218,63 +2471,142 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     pass
                 cur += timedelta(days=1)
         
-            # ------------ HISTÓRICO RPO A ------------
-            series_eol_dia = {}
+            # ------------ HISTÓRICO RDO A → G ------------
+            series_eol_rdo = {}
+
             for k in range((fin - ini).days + 1):
+
                 f = ini + timedelta(days=k)
-                yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d")
-                M_TXT = MES_TXT[f.month-1]
-                url_zip = base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra="A")
-        
-                carpeta = work_dir / f"RDO_A_{yk}{mk}{dk}"
-                resultados = carpeta / f"YUPANA_{dk}{mk}A" / "RESULTADOS"
-        
-                if not resultados.exists():
+                lbl = f.strftime("%Y-%m-%d")
+
+                yk = f.year
+                mk = f.strftime("%m")
+                dk = f.strftime("%d")
+                M_TXT = MES_TXT[f.month - 1]
+
+                rdos = {}
+
+                # =====================================================
+                # BUSCAR RDO A → G
+                # =====================================================
+                for letra in RDO_LETRAS_DEF:   # A, B, C, D, E, F, G
+
                     try:
-                        r = requests.get(url_zip, timeout=40)
-                        r.raise_for_status()
-                        with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
-                            zf.extractall(path=carpeta)
-                    except:
+                        url_zip = base_rdo.format(
+                            y=yk,
+                            m=mk,
+                            d=dk,
+                            M=M_TXT,
+                            letra=letra
+                        )
+
+                        carpeta = work_dir / f"RDO_{letra}_{yk}{mk}{dk}"
+                        resultados = (
+                            carpeta
+                            / f"YUPANA_{dk}{mk}{letra}"
+                            / "RESULTADOS"
+                        )
+
+                        # Descargar si no existe
+                        if not resultados.exists():
+
+                            r = requests.get(url_zip, timeout=40)
+                            r.raise_for_status()
+
+                            with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+                                zf.extractall(path=carpeta)
+
+                        df_rer = cargar_dataframe(resultados, stem_rer)
+
+                        vals = rellenar_hasta_48(
+                            totales_rer(
+                                df_rer,
+                                [x.upper() for x in barras_eol]
+                            )
+                        )
+
+                        if vals and any(
+                            v is not None and v != 0
+                            for v in vals
+                        ):
+                            rdos[letra] = vals[:48]
+
+                    except Exception:
                         continue
+
+                # =====================================================
+                # FUSIONAR RDO A → G
+                # =====================================================
+                if rdos:
+
+                    letras_orden = sorted(rdos.keys())
+
+                    serie_final = rdos[letras_orden[0]].copy()
+
+                    for letra in letras_orden[1:]:
+
+                        nueva = rdos[letra]
+
+                        for i in range(48):
+
+                            if nueva[i] is not None and nueva[i] != 0:
+
+                                serie_final[i:] = nueva[i:]
+                                break
+
+                    if any(
+                        v is not None and v != 0
+                        for v in serie_final
+                    ):
+                        series_eol_rdo[lbl] = serie_final
         
-                df_rer = cargar_dataframe(resultados, stem_rer)
-                tot_eol = rellenar_hasta_48(totales_rer(df_rer, [x.upper() for x in barras_eol]))
-                if tot_eol:
-                    series_eol_dia[f.strftime("%Y-%m-%d")] = tot_eol
-        
-            # ------------ FUSIÓN IEOD + RPO A (último día) ------------
+            # ------------ FUSIÓN IEOD + RDO A-G ------------
             series_eol_7 = {}
+
             cur = ini
+
             while cur < fin:
+
                 lbl = cur.strftime("%Y-%m-%d")
+
+                # =====================================================
+                # 1. PRIORIDAD: IEOD
+                # =====================================================
                 if lbl in series_ieod_eol:
+
                     series_eol_7[lbl] = series_ieod_eol[lbl][:48]
-                else:
-                    try:
-                        fb = _lee_ieod_bytes(cur.year, cur.month, MES_TXT[cur.month-1], cur.day)
-                        vals = _extrae_eolica_48(fb)
-                        if vals:
-                            series_eol_7[lbl] = vals[:48]
-                    except:
-                        pass
+
+                # =====================================================
+                # 2. SI NO HAY IEOD → RDO A-G FUSIONADO
+                # =====================================================
+                elif lbl in series_eol_rdo:
+
+                    series_eol_7[lbl] = series_eol_rdo[lbl][:48]
+
                 cur += timedelta(days=1)
-        
-            # ------------ ÚLTIMO DÍA: PRIORIDAD IEOD → RDO A ------------
+
+
+            # =========================================================
+            # ÚLTIMO DÍA: IEOD → RDO A-G
+            # =========================================================
+
             lbl_fin = fin.strftime("%Y-%m-%d")
 
-            # 1. Primero intentar usar IEOD
+            # 1. Primero IEOD
             if lbl_fin in series_ieod_eol:
+
                 series_eol_7[lbl_fin] = series_ieod_eol[lbl_fin][:48]
 
-            # 2. Si no existe IEOD, usar RDO A
-            elif lbl_fin in series_eol_dia:
-                series_eol_7[lbl_fin] = series_eol_dia[lbl_fin][:48]
+            # 2. Si no hay IEOD → RDO A-G
+            elif lbl_fin in series_eol_rdo:
+
+                series_eol_7[lbl_fin] = series_eol_rdo[lbl_fin][:48]
 
             else:
+
                 st.warning(
                     f"⚠️ No se encontró generación eólica para {lbl_fin} "
-                    "ni en IEOD ni en RDO A."
+                    "ni en IEOD ni en RDO A-G."
                 )
         
             # ------------ PLOTLY INTERACTIVO (FUSIÓN EÓLICA) ------------
@@ -2296,11 +2628,17 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 for lbl in fechas_orden:
                     fobj = datetime.strptime(lbl, "%Y-%m-%d").date()
                     vals = [
-                        0 if (v is None or (isinstance(v, float) and math.isnan(v))) else v
+                        None
+                        if (
+                            v is None
+                            or (isinstance(v, float) and math.isnan(v))
+                            or v == 0
+                        )
+                        else v
                         for v in series_eol_7[lbl][:48]
                     ]
         
-                    y_all.extend(vals)
+                    y_all.extend(v for v in vals if v is not None)
         
                     if fobj == fin:
                         # Último día → rojo y grueso
@@ -2376,63 +2714,158 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     pass
                 cur += timedelta(days=1)
         
-            # ------------ HISTÓRICO RPO A ------------
-            series_sol_dia = {}
+            # ------------ HISTÓRICO RDO A → G ------------
+            series_solar_rdo = {}
+
             for k in range((fin - ini).days + 1):
+
                 f = ini + timedelta(days=k)
-                yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d")
-                M_TXT = MES_TXT[f.month-1]
-                url_zip = base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra="A")
-        
-                carpeta = work_dir / f"RDO_A_{yk}{mk}{dk}"
-                resultados = carpeta / f"YUPANA_{dk}{mk}A" / "RESULTADOS"
-        
-                if not resultados.exists():
+                lbl = f.strftime("%Y-%m-%d")
+
+                yk = f.year
+                mk = f.strftime("%m")
+                dk = f.strftime("%d")
+                M_TXT = MES_TXT[f.month - 1]
+
+                rdos = {}
+
+                # =====================================================
+                # BUSCAR RDO A → G
+                # =====================================================
+                for letra in RDO_LETRAS_DEF:
+
                     try:
-                        r = requests.get(url_zip, timeout=40)
-                        r.raise_for_status()
-                        with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
-                            zf.extractall(path=carpeta)
+                        url_zip = base_rdo.format(
+                            y=yk,
+                            m=mk,
+                            d=dk,
+                            M=M_TXT,
+                            letra=letra
+                        )
+
+                        carpeta = work_dir / f"RDO_{letra}_{yk}{mk}{dk}"
+                        resultados = (
+                            carpeta
+                            / f"YUPANA_{dk}{mk}{letra}"
+                            / "RESULTADOS"
+                        )
+
+                        if not resultados.exists():
+
+                            r = requests.get(
+                                url_zip,
+                                timeout=40
+                            )
+                            r.raise_for_status()
+
+                            with zipfile.ZipFile(
+                                io.BytesIO(r.content)
+                            ) as zf:
+                                zf.extractall(
+                                    path=carpeta
+                                )
+
+                        df_rer = cargar_dataframe(
+                            resultados,
+                            stem_rer
+                        )
+
+                        vals = rellenar_hasta_48(
+                            totales_rer(
+                                df_rer,
+                                [x.upper() for x in barras_solar]
+                            )
+                        )
+
+                        if vals and any(
+                            v is not None and v != 0
+                            for v in vals
+                        ):
+                            rdos[letra] = vals[:48]
+
                     except Exception:
                         continue
+
+                # =====================================================
+                # FUSIONAR RDO A → G
+                # =====================================================
+                if rdos:
+
+                    letras_orden = sorted(rdos.keys())
+
+                    serie_final = rdos[
+                        letras_orden[0]
+                    ].copy()
+
+                    for letra in letras_orden[1:]:
+
+                        nueva = rdos[letra]
+
+                        for i in range(48):
+
+                            if (
+                                nueva[i] is not None
+                                and nueva[i] != 0
+                            ):
+                                serie_final[i:] = nueva[i:]
+                                break
+
+                    if any(
+                        v is not None and v != 0
+                        for v in serie_final
+                    ):
+                        series_solar_rdo[lbl] = serie_final
         
-                df_sol = cargar_dataframe(resultados, stem_rer)
-                vals   = rellenar_hasta_48(totales_rer(df_sol, [x.upper() for x in barras_solar]))
-                if vals and any(v != 0 for v in vals):
-                    series_sol_dia[f.strftime("%Y-%m-%d")] = vals
-        
-            # ------------ FUSIÓN IEOD + RPO A (último día) ------------
+            # ------------ FUSIÓN IEOD + RDO A-G ------------
+
             series_solar_7 = {}
+
             cur = ini
+
             while cur < fin:
+
                 lbl = cur.strftime("%Y-%m-%d")
+
+                # 1. PRIORIDAD: IEOD
                 if lbl in series_ieod_solar:
-                    series_solar_7[lbl] = series_ieod_solar[lbl][:48]
-                else:
-                    try:
-                        fb   = _lee_ieod_bytes(cur.year, cur.month, MES_TXT[cur.month-1], cur.day)
-                        vals = _extrae_solar_48_s(fb)
-                        if vals:
-                            series_solar_7[lbl] = vals[:48]
-                    except Exception:
-                        pass
+
+                    series_solar_7[lbl] = (
+                        series_ieod_solar[lbl][:48]
+                    )
+
+                # 2. SI NO HAY IEOD → RDO A-G
+                elif lbl in series_solar_rdo:
+
+                    series_solar_7[lbl] = (
+                        series_solar_rdo[lbl][:48]
+                    )
+
                 cur += timedelta(days=1)
-        
-            # ------------ ÚLTIMO DÍA: PRIORIDAD IEOD → RDO A ------------
+
+
+            # ------------ ÚLTIMO DÍA: IEOD → RDO A-G ------------
+
             lbl_fin = fin.strftime("%Y-%m-%d")
 
-            # 1. Primero usar IEOD
+            # 1. IEOD
             if lbl_fin in series_ieod_solar:
-                series_solar_7[lbl_fin] = series_ieod_solar[lbl_fin][:48]
 
-            # 2. Si no hay IEOD válido, usar RDO A
-            elif lbl_fin in series_sol_dia:
-                series_solar_7[lbl_fin] = series_sol_dia[lbl_fin][:48]
+                series_solar_7[lbl_fin] = (
+                    series_ieod_solar[lbl_fin][:48]
+                )
+
+            # 2. RDO A-G
+            elif lbl_fin in series_solar_rdo:
+
+                series_solar_7[lbl_fin] = (
+                    series_solar_rdo[lbl_fin][:48]
+                )
 
             else:
+
                 st.warning(
                     f"⚠️ No se encontró generación solar para {lbl_fin} "
-                    "ni en IEOD ni en RDO A."
+                    "ni en IEOD ni en RDO A-G."
                 )
         
             # ------------ PLOTLY INTERACTIVO (RESPETANDO LÓGICA DE CEROS) ------------
@@ -2579,85 +3012,179 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         except Exception as e:
             st.warning(f"IEOD histórico TÉRMICA no disponible: {e}")
             
-        # ---------- HISTÓRICO RPO A (TÉRMICA) ----------
-        try:
-            series_term_dia = {}
-            stem_term = "Termica - Despacho (MW)"
-            
-            for k in range((fin - ini).days + 1):
-                f = ini + timedelta(days=k)
-                yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d")
-                M_TXT = MES_TXT[f.month-1]
-                
-                url_zip = base_rdo.format(y=yk, m=mk, d=dk, M=M_TXT, letra="A")
-                carpeta = work_dir / f"RDO_A_{yk}{mk}{dk}"
-                resultados = carpeta / f"YUPANA_{dk}{mk}A" / "RESULTADOS"
-                
-                if not resultados.exists():
-                    try:
-                        r = requests.get(url_zip, timeout=40)
+        # ---------- HISTÓRICO RDO A → G (TÉRMICA) ----------
+        series_term_rdo = {}
+
+        for k in range((fin - ini).days + 1):
+
+            f = ini + timedelta(days=k)
+            lbl = f.strftime("%Y-%m-%d")
+
+            yk = f.year
+            mk = f.strftime("%m")
+            dk = f.strftime("%d")
+            M_TXT = MES_TXT[f.month - 1]
+
+            rdos = {}
+
+            # =====================================================
+            # BUSCAR RDO A → G
+            # =====================================================
+            for letra in RDO_LETRAS_DEF:
+
+                try:
+                    url_zip = base_rdo.format(
+                        y=yk,
+                        m=mk,
+                        d=dk,
+                        M=M_TXT,
+                        letra=letra
+                    )
+
+                    carpeta = work_dir / f"RDO_{letra}_{yk}{mk}{dk}"
+                    resultados = (
+                        carpeta
+                        / f"YUPANA_{dk}{mk}{letra}"
+                        / "RESULTADOS"
+                    )
+
+                    if not resultados.exists():
+
+                        r = requests.get(
+                            url_zip,
+                            timeout=40
+                        )
                         r.raise_for_status()
-                        with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+
+                        with zipfile.ZipFile(
+                            io.BytesIO(r.content)
+                        ) as zf:
                             zf.extractall(path=carpeta)
-                    except Exception:
-                        continue
+
+                    df_rdo_term = cargar_dataframe(
+                        resultados,
+                        stem_term
+                    )
+
+                    df_rdo_rer = cargar_dataframe(
+                        resultados,
+                        stem_rer
+                    )
+
+                    t_term = rellenar_hasta_48(
+                        totales_hidro(df_rdo_term)
+                    )
+
+                    t_rer = rellenar_hasta_48(
+                        totales_rer(
+                            df_rdo_rer,
+                            grupos_gas
+                        )
+                    )
+
+                    if t_term and t_rer:
+
+                        vals = suma_elementos(
+                            t_term,
+                            t_rer
+                        )
+
+                        if vals and any(
+                            v is not None and v != 0
+                            for v in vals
+                        ):
+                            rdos[letra] = vals[:48]
+
+                except Exception:
+                    continue
+
+            # =====================================================
+            # FUSIÓN RDO A → G
+            # =====================================================
+            if rdos:
+
+                letras_orden = sorted(rdos.keys())
+
+                serie_final = rdos[
+                    letras_orden[0]
+                ].copy()
+
+                for letra in letras_orden[1:]:
+
+                    nueva = rdos[letra]
+
+                    for i in range(48):
+
+                        if (
+                            nueva[i] is not None
+                            and nueva[i] != 0
+                        ):
+                            serie_final[i:] = nueva[i:]
+                            break
+
+                if any(
+                    v is not None and v != 0
+                    for v in serie_final
+                ):
+                    series_term_rdo[lbl] = serie_final
         
-                df_rdo_term = cargar_dataframe(resultados, stem_term)
-                df_rdo_rer  = cargar_dataframe(resultados, stem_rer)
-
-                t_term = rellenar_hasta_48(
-                    totales_hidro(df_rdo_term)
-                )
-
-                t_rer = rellenar_hasta_48(
-                    totales_rer(df_rdo_rer, grupos_gas)
-                )
-
-                if t_term and t_rer:
-                    vals = suma_elementos(t_term, t_rer)
-
-                    if vals and any(v != 0 for v in vals):
-                        series_term_dia[f.strftime("%Y-%m-%d")] = vals
-        
-        except Exception:
-            pass
-        
-        # ---------- FUSIÓN IEOD + RPO A (último día) ----------
+        # ---------- FUSIÓN IEOD + RDO A-G ----------
         try:
+
             series_term_7 = {}
-        
-            # IEOD desde ini hasta fin-1
+
             cur = ini
+
+            # =====================================================
+            # DÍAS ANTERIORES AL ÚLTIMO
+            # IEOD → RDO A-G
+            # =====================================================
             while cur < fin:
+
                 lbl = cur.strftime("%Y-%m-%d")
+
+                # 1. PRIORIDAD: IEOD
                 if lbl in series_ieod_term:
-                    series_term_7[lbl] = series_ieod_term[lbl][:48]
-                else:
-                    # fallback: reintentar lectura puntual
-                    try:
-                        fb = _lee_ieod_bytes(cur.year, cur.month, MES_TXT[cur.month-1], cur.day)
-                        vals = _extrae_termica_48(fb)
-                        if vals and any(v != 0 for v in vals):
-                            series_term_7[lbl] = vals[:48]
-                    except Exception:
-                        pass
+
+                    series_term_7[lbl] = (
+                        series_ieod_term[lbl][:48]
+                    )
+
+                # 2. SI NO HAY IEOD → RDO A-G
+                elif lbl in series_term_rdo:
+
+                    series_term_7[lbl] = (
+                        series_term_rdo[lbl][:48]
+                    )
+
                 cur += timedelta(days=1)
-        
-            # ---------- ÚLTIMO DÍA: PRIORIDAD IEOD → RDO A ----------
+
+
+            # =====================================================
+            # ÚLTIMO DÍA
+            # IEOD → RDO A-G
+            # =====================================================
             lbl_fin = fin.strftime("%Y-%m-%d")
 
-            # 1. Primero usar IEOD
+            # 1. IEOD
             if lbl_fin in series_ieod_term:
-                series_term_7[lbl_fin] = series_ieod_term[lbl_fin][:48]
 
-            # 2. Si no existe IEOD válido, usar RDO A
-            elif lbl_fin in series_term_dia:
-                series_term_7[lbl_fin] = series_term_dia[lbl_fin][:48]
+                series_term_7[lbl_fin] = (
+                    series_ieod_term[lbl_fin][:48]
+                )
+
+            # 2. RDO A-G
+            elif lbl_fin in series_term_rdo:
+
+                series_term_7[lbl_fin] = (
+                    series_term_rdo[lbl_fin][:48]
+                )
 
             else:
+
                 st.warning(
-                    f"⚠️ No se encontró generación térmica para {lbl_fin} "
-                    "ni en IEOD ni en RDO A."
+                    f"⚠️ No se encontró generación térmica para "
+                    f"{lbl_fin} ni en IEOD ni en RDO A-G."
                 )
         
             # ---------- PLOTLY INTERACTIVO ----------
@@ -2677,10 +3204,19 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 for l in fechas_orden:
                     fobj = datetime.strptime(l, "%Y-%m-%d").date()
                     vals = [
-                        0 if (v is None or (isinstance(v, float) and math.isnan(v))) else v
+                        None
+                        if (
+                            v is None
+                            or (isinstance(v, float) and math.isnan(v))
+                            or v == 0
+                        )
+                        else v
                         for v in series_term_7[l][:48]
                     ]
-                    y_all.extend(vals)
+                    y_all.extend(
+                        v for v in vals
+                        if v is not None
+                    )
         
                     if fobj == fin:
                         # último día → rojo, más grueso
@@ -2813,10 +3349,10 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 reg = pd.to_numeric(sub[c_reg], errors="coerce").fillna(0.0).astype(float).tolist()[:48]
                 v_sum = [pas[i] + reg[i] for i in range(48)]
                 series_por_dia.append((f.strftime("%Y-%m-%d"), v_sum))
-        except Exception as e:
-            st.warning(f"IEOD histórico no disponible: {e}")
+        except Exception:
+            pass
             
-        # HISTÓRICO RDO (A → B → C) para HIDRO
+        # HISTÓRICO RDO para HIDRO
         series_hidro_rdo = {}
         
         for k in range((fin - ini).days + 1):
@@ -2868,7 +3404,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 except Exception:
                     continue
 
-            # ===== Fusión A → B → C =====
+            # ===== Fusión =====
             if rdos:
         
                 letras_orden = sorted(rdos.keys())
@@ -2883,58 +3419,146 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                         if nueva[i] != 0:
                             serie_final[i:] = nueva[i:]
                             break
-                    
-                # ===== Fusión A → B → C =====
-                if rdos:
-                    letras_orden = sorted(rdos.keys())
-                    serie_final = rdos[letras_orden[0]].copy()
-                
-                    for letra in letras_orden[1:]:            
-                        nueva = rdos[letra]
-                        for i in range(48):
-                            if nueva[i] != 0:
-                                serie_final[i:] = nueva[i:]
-                                break
-                    
-                    if any(v != 0 for v in serie_final):
-                        series_hidro_rdo[f.strftime("%Y-%m-%d")] = serie_final
+                if any(v != 0 for v in serie_final):
+                    series_hidro_rdo[f.strftime("%Y-%m-%d")] = serie_final
         
         # Fusión + Promedio + Máximo
         try:
             series_7={}
             stem_hidro = "Hidro - Despacho (MW)"; stem_rer="Rer y No COES - Despacho (MW)"
-            ini_ieod = ini; fin_ieod = fin - timedelta(days=1)
-            dias_ieod = (fin_ieod - ini_ieod).days + 1 if fin_ieod >= ini_ieod else 0
-            # IEOD
-            for k in range(dias_ieod):
-                f = ini_ieod + timedelta(days=k); y2, m2, d2 = f.year, f.month, f.day; M2 = MES_TXT[m2-1]
+            # =====================================================
+            # FUSIÓN IEOD → RDO A-G
+            # =====================================================
+
+            series_7 = {}
+
+            cur = ini
+
+            while cur < fin:
+
+                lbl = cur.strftime("%Y-%m-%d")
+
+                # =================================================
+                # 1. PRIORIDAD: IEOD
+                # =================================================
                 try:
-                    fb = _lee_ieod_bytes(y2, m2, M2, d2)
-                    # usar extractor anterior de pasada/regulación
-                    def _find_cols(df):
-                        def _n(s): import re; return re.sub(r"\s+"," ",str(s).strip()).upper()
-                        c_pas=c_reg=None
-                        for c in df.columns:
-                            k=_n(c)
-                            if k=="H. PASADA" and c_pas is None: c_pas=c
-                            if k=="H. REGULACION" and c_reg is None: c_reg=c
-                        return c_pas, c_reg
-                    df = pd.read_excel(fb, sheet_name="TIPO_RECURSO", header=5, engine="openpyxl")
+                    fb = _lee_ieod_bytes(
+                        cur.year,
+                        cur.month,
+                        MES_TXT[cur.month - 1],
+                        cur.day
+                    )
+
+                    df = pd.read_excel(
+                        fb,
+                        sheet_name="TIPO_RECURSO",
+                        header=5,
+                        engine="openpyxl"
+                    )
+
                     c_pas, c_reg = _find_cols(df)
+
                     if c_pas and c_reg:
+
                         sub = df.iloc[0:48, :]
-                        pas = pd.to_numeric(sub[c_pas], errors="coerce").fillna(0.0).astype(float).tolist()
-                        reg = pd.to_numeric(sub[c_reg], errors="coerce").fillna(0.0).astype(float).tolist()
-                        vals = [pas[i]+reg[i] for i in range(48)]
-                        series_7[f.strftime("%Y-%m-%d")] = vals
+
+                        pas = pd.to_numeric(
+                            sub[c_pas],
+                            errors="coerce"
+                        ).fillna(0.0).astype(float).tolist()
+
+                        reg = pd.to_numeric(
+                            sub[c_reg],
+                            errors="coerce"
+                        ).fillna(0.0).astype(float).tolist()
+
+                        vals = [
+                            pas[i] + reg[i]
+                            for i in range(48)
+                        ]
+
+                        # Solo considerar IEOD si realmente tiene datos
+                        if any(v != 0 for v in vals):
+
+                            series_7[lbl] = vals
+
                 except Exception:
-                    continue
-                
-            # Último día desde RDO (fusión A → B → C)
+                    pass
+
+                # =================================================
+                # 2. SI NO HAY IEOD → RDO A-G FUSIONADO
+                # =================================================
+                if lbl not in series_7:
+
+                    if lbl in series_hidro_rdo:
+
+                        series_7[lbl] = (
+                            series_hidro_rdo[lbl][:48]
+                        )
+
+                cur += timedelta(days=1)
+
+
+            # =====================================================
+            # ÚLTIMO DÍA: IEOD → RDO A-G
+            # =====================================================
+
             lbl_fin = fin.strftime("%Y-%m-%d")
 
-            if lbl_fin in series_hidro_rdo:
-                series_7[lbl_fin] = series_hidro_rdo[lbl_fin][:48]
+            # 1. IEOD
+            try:
+
+                fb = _lee_ieod_bytes(
+                    fin.year,
+                    fin.month,
+                    MES_TXT[fin.month - 1],
+                    fin.day
+                )
+
+                df = pd.read_excel(
+                    fb,
+                    sheet_name="TIPO_RECURSO",
+                    header=5,
+                    engine="openpyxl"
+                )
+
+                c_pas, c_reg = _find_cols(df)
+
+                if c_pas and c_reg:
+
+                    sub = df.iloc[0:48, :]
+
+                    pas = pd.to_numeric(
+                        sub[c_pas],
+                        errors="coerce"
+                    ).fillna(0.0).astype(float).tolist()
+
+                    reg = pd.to_numeric(
+                        sub[c_reg],
+                        errors="coerce"
+                    ).fillna(0.0).astype(float).tolist()
+
+                    vals = [
+                        pas[i] + reg[i]
+                        for i in range(48)
+                    ]
+
+                    if any(v != 0 for v in vals):
+
+                        series_7[lbl_fin] = vals
+
+            except Exception:
+                pass
+
+
+            # 2. Si NO hay IEOD → RDO A-G
+            if lbl_fin not in series_7:
+
+                if lbl_fin in series_hidro_rdo:
+
+                    series_7[lbl_fin] = (
+                        series_hidro_rdo[lbl_fin][:48]
+                    )
     
             if series_7:
                 # Fusión líneas
@@ -3033,7 +3657,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     pass
                 cur += timedelta(days=1)
                 
-            # HISTÓRICO RDO (fusión A → B → C)
+            # HISTÓRICO RDO (fusión)
             series_dem_rdo = {}
             
             for k in range((fin - ini).days + 1):
@@ -3042,7 +3666,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             
                 rdos = {}
             
-                for letra in ["A","B","C"]:
+                for letra in ["A","B","C","D","E","F","G"]:
             
                     try:
             
@@ -3083,7 +3707,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                         pass
             
             
-                # ===== Fusión A → B → C =====
+                # ===== Fusión =====
                 if rdos:
             
                     letras_orden = sorted(rdos.keys())
@@ -3102,24 +3726,45 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     if any(v != 0 for v in serie_final):
                         series_dem_rdo[f.strftime("%Y-%m-%d")] = serie_final
             
-            # Fusión, Promedio, Máximo
-            series_dem_7={}
+            # =========================================================
+            # FUSIÓN: IEOD → RDO A-G
+            # =========================================================
+
+            series_dem_7 = {}
+
             cur = ini
+
             while cur < fin:
+
                 lbl = cur.strftime("%Y-%m-%d")
+
+                # 1. PRIORIDAD: IEOD
                 if lbl in series_ieod_dem:
+
                     series_dem_7[lbl] = series_ieod_dem[lbl][:48]
-                else:
-                    try:
-                        fb = _lee_ieod_bytes(cur.year, cur.month, MES_TXT[cur.month-1], cur.day)
-                        vals = _extrae_demanda_48(fb)
-                        if vals: series_dem_7[lbl] = vals[:48]
-                    except Exception:
-                        pass
+
+                # 2. SI NO HAY IEOD → RDO A-G
+                elif lbl in series_dem_rdo:
+
+                    series_dem_7[lbl] = series_dem_rdo[lbl][:48]
+
                 cur += timedelta(days=1)
+
+
+            # =========================================================
+            # ÚLTIMO DÍA: IEOD → RDO A-G
+            # =========================================================
+
             lbl_fin = fin.strftime("%Y-%m-%d")
-            
-            if lbl_fin in series_dem_rdo:
+
+            # 1. PRIORIDAD: IEOD
+            if lbl_fin in series_ieod_dem:
+
+                series_dem_7[lbl_fin] = series_ieod_dem[lbl_fin][:48]
+
+            # 2. SI NO HAY IEOD → RDO A-G
+            elif lbl_fin in series_dem_rdo:
+
                 series_dem_7[lbl_fin] = series_dem_rdo[lbl_fin][:48]
             
             if series_dem_7:
@@ -3233,7 +3878,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             
                 rdos = {}
             
-                for letra in ["A","B","C"]:
+                for letra in ["A","B","C","D","E","F","G"]:
             
                     try:
                         yk, mk, dk = f.year, f.strftime("%m"), f.strftime("%d")
@@ -3265,7 +3910,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                         pass
             
             
-                # ===== Fusión A → B → C =====
+                # ===== Fusión =====
                 if rdos:
                     letras_orden = sorted(rdos.keys())
                     serie_final = rdos[letras_orden[0]].copy()
@@ -3289,16 +3934,32 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     series_eol_7[lbl] = series_ieod_eol[lbl][:48]
                 else:
                     try:
-                        fb = _lee_ieod_bytes(cur.year, cur.month, MES_TXT[cur.month-1], cur.day)
+                        fb = _lee_ieod_bytes(
+                            cur.year,
+                            cur.month,
+                            MES_TXT[cur.month-1],
+                            cur.day
+                        )
                         vals = _extrae_eolica_48(fb)
-                        if vals: series_eol_7[lbl] = vals[:48]
+
+                        if vals and any(v != 0 for v in vals):
+                            series_eol_7[lbl] = vals[:48]
+
+                        elif lbl in series_eol_rdo:
+                            series_eol_7[lbl] = series_eol_rdo[lbl][:48]
+
                     except Exception:
-                        pass
+                        if lbl in series_eol_rdo:
+                            series_eol_7[lbl] = series_eol_rdo[lbl][:48]
                 cur += timedelta(days=1)
             
             lbl_fin = fin.strftime("%Y-%m-%d")
 
-            if lbl_fin in series_eol_rdo:
+            # Último día: PRIORIDAD IEOD → RDO
+            if lbl_fin in series_ieod_eol:
+                series_eol_7[lbl_fin] = series_ieod_eol[lbl_fin][:48]
+
+            elif lbl_fin in series_eol_rdo:
                 series_eol_7[lbl_fin] = series_eol_rdo[lbl_fin][:48]
                 
             st.session_state["series_rer"] = series_eol_7
@@ -3372,49 +4033,223 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                         v_centro = (v_centro + [0.0]*N_INTERVALOS)[:N_INTERVALOS]
                         return v_norte, v_centro
     
-                    # Promedios diarios IEOD (ini → fin-1)
+                    # Promedios diarios: PRIORIDAD IEOD → RDO
                     fechas, prom_norte, prom_centro = [], [], []
+
+                    NORTE = {
+                        "PE TALARA",
+                        "PE CUPISNIQUE",
+                        "HUAMBOS",
+                        "DUNA"
+                    }
+
                     cur = ini
+
                     while cur < fin:
+
+                        lbl = cur.strftime("%Y-%m-%d")
+
+                        vn = None
+                        vc = None
+
+                        # =========================================================
+                        # 1. PRIMERO: IEOD
+                        # =========================================================
                         try:
-                            fb = _lee_ieod_bytes(cur.year, cur.month, MES_TXT[cur.month-1], cur.day)
-                            vn, vc = _extrae_eolica_ns_gareas(fb)
-                            if vn is not None and vc is not None:
-                                fechas.append(cur.strftime("%Y-%m-%d"))
-                                prom_norte.append(sum(vn)/N_INTERVALOS)
-                                prom_centro.append(sum(vc)/N_INTERVALOS)
+                            fb = _lee_ieod_bytes(
+                                cur.year,
+                                cur.month,
+                                MES_TXT[cur.month - 1],
+                                cur.day
+                            )
+
+                            vn_ieod, vc_ieod = _extrae_eolica_ns_gareas(fb)
+
+                            if (
+                                vn_ieod is not None
+                                and vc_ieod is not None
+                                and (
+                                    any(v != 0 for v in vn_ieod)
+                                    or any(v != 0 for v in vc_ieod)
+                                )
+                            ):
+                                vn = vn_ieod[:48]
+                                vc = vc_ieod[:48]
+
                         except Exception:
                             pass
+
+                        # =========================================================
+                        # 2. SI NO HAY IEOD → RDO
+                        # =========================================================
+                        if vn is None or vc is None:
+
+                            # Total eólico RDO ya obtenido mediante A → G
+                            serie_rdo = series_eol_rdo.get(lbl)
+
+                            if serie_rdo is not None:
+
+                                yk = cur.year
+                                mk = cur.strftime("%m")
+                                dk = cur.strftime("%d")
+
+                                # Buscar el último RDO disponible
+                                for letra in ["G", "F", "E", "D", "C", "B", "A"]:
+
+                                    try:
+                                        carpeta = work_dir / f"RDO_{letra}_{yk}{mk}{dk}"
+                                        resultados = (
+                                            carpeta
+                                            / f"YUPANA_{dk}{mk}{letra}"
+                                            / "RESULTADOS"
+                                        )
+
+                                        if not resultados.exists():
+                                            continue
+
+                                        df_rer = cargar_dataframe(
+                                            resultados,
+                                            stem_rer
+                                        )
+
+                                        vn_rdo = rellenar_hasta_48(
+                                            totales_rer(
+                                                df_rer,
+                                                list(NORTE)
+                                            )
+                                        )
+
+                                        if vn_rdo and any(v != 0 for v in vn_rdo):
+
+                                            vn = vn_rdo[:48]
+
+                                            # Centro = Total eólico - Norte
+                                            vc = [
+                                                serie_rdo[i] - vn[i]
+                                                for i in range(48)
+                                            ]
+
+                                            break
+
+                                    except Exception:
+                                        continue
+
+                        # =========================================================
+                        # 3. GUARDAR SI SE ENCONTRÓ INFORMACIÓN
+                        # =========================================================
+                        if vn is not None and vc is not None:
+
+                            fechas.append(lbl)
+
+                            prom_norte.append(
+                                sum(vn) / N_INTERVALOS
+                            )
+
+                            prom_centro.append(
+                                sum(vc) / N_INTERVALOS
+                            )
+
                         cur += timedelta(days=1)
     
-                    # Último día (fin) con RDO fusionado
+                    # =========================================================
+                    # ÚLTIMO DÍA: PRIORIDAD IEOD → RDO
+                    # =========================================================
+
+                    lfin = fin.strftime("%Y-%m-%d")
+
+                    vn = None
+                    vc = None
+
+                    # ---------------------------------------------------------
+                    # 1. PRIMERO: intentar IEOD para NORTE y CENTRO
+                    # ---------------------------------------------------------
                     try:
-                    
-                        lfin = fin.strftime("%Y-%m-%d")
-                    
-                        if lfin in series_eol_rdo:
-                    
-                            serie = series_eol_rdo[lfin]
-                    
-                            NORTE  = {"PE TALARA","PE CUPISNIQUE","HUAMBOS","DUNA"}
-                    
-                            # recalcular por barras usando el RDO final
-                            yk, mk, dk = fin.year, fin.strftime("%m"), fin.strftime("%d")
-                    
-                            carpeta = work_dir / f"RDO_C_{yk}{mk}{dk}"
-                            resultados = carpeta / f"YUPANA_{dk}{mk}C" / "RESULTADOS"
-                    
-                            df_rer = cargar_dataframe(resultados, stem_rer)
-                    
-                            vn = rellenar_hasta_48(totales_rer(df_rer, list(NORTE))) or [0.0]*48
-                            vc = [serie[i] - vn[i] for i in range(48)]
-                    
-                            fechas.append(lfin)
-                            prom_norte.append(sum(vn)/48)
-                            prom_centro.append(sum(vc)/48)
-                    
+                        fb = _lee_ieod_bytes(
+                            fin.year,
+                            fin.month,
+                            MES_TXT[fin.month - 1],
+                            fin.day
+                        )
+
+                        vn_ieod, vc_ieod = _extrae_eolica_ns_gareas(fb)
+
+                        if (
+                            vn_ieod is not None
+                            and vc_ieod is not None
+                            and (
+                                any(v != 0 for v in vn_ieod)
+                                or any(v != 0 for v in vc_ieod)
+                            )
+                        ):
+                            vn = vn_ieod[:48]
+                            vc = vc_ieod[:48]
+
                     except Exception:
                         pass
+
+
+                    # ---------------------------------------------------------
+                    # 2. SI NO HAY IEOD → buscar último RDO disponible A-G
+                    # ---------------------------------------------------------
+                    if vn is None or vc is None:
+
+                        NORTE = {
+                            "PE TALARA",
+                            "PE CUPISNIQUE",
+                            "HUAMBOS",
+                            "DUNA"
+                        }
+
+                        yk, mk, dk = fin.year, fin.strftime("%m"), fin.strftime("%d")
+
+                        for letra in ["G", "F", "E", "D", "C", "B", "A"]:
+
+                            try:
+                                carpeta = work_dir / f"RDO_{letra}_{yk}{mk}{dk}"
+                                resultados = carpeta / f"YUPANA_{dk}{mk}{letra}" / "RESULTADOS"
+
+                                if not resultados.exists():
+                                    continue
+
+                                df_rer = cargar_dataframe(resultados, stem_rer)
+
+                                vn_temp = rellenar_hasta_48(
+                                    totales_rer(df_rer, list(NORTE))
+                                )
+
+                                if vn_temp and any(v != 0 for v in vn_temp):
+
+                                    vn = vn_temp[:48]
+
+                                    # Total eólico RDO correspondiente
+                                    serie_rdo = series_eol_rdo.get(lfin)
+
+                                    if serie_rdo is not None:
+                                        vc = [
+                                            serie_rdo[i] - vn[i]
+                                            for i in range(48)
+                                        ]
+
+                                    break
+
+                            except Exception:
+                                continue
+
+
+                    # ---------------------------------------------------------
+                    # 3. Guardar promedio del último día
+                    # ---------------------------------------------------------
+                    if vn is not None and vc is not None:
+
+                        fechas.append(lfin)
+
+                        prom_norte.append(
+                            sum(vn) / 48
+                        )
+
+                        prom_centro.append(
+                            sum(vc) / 48
+                        )
                     
                     # Gráfico apilado en pantalla
                     if fechas and prom_norte and prom_centro and len(fechas)==len(prom_norte)==len(prom_centro):
@@ -3536,7 +4371,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     except Exception:
                         continue
             
-                # ===== Fusión A → B → C =====
+                # ===== Fusión =====
                 if rdos:
             
                     letras_orden = sorted(rdos.keys())
@@ -3555,24 +4390,46 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     if any(v != 0 for v in serie_final):
                         series_sol_dia[f.strftime("%Y-%m-%d")] = serie_final
                         
-            # Fusión + Promedio + Máximo
-            series_solar_7={}
+            # =========================================================
+            # FUSIÓN: IEOD → RDO A-G
+            # =========================================================
+
+            series_solar_7 = {}
+
             cur = ini
+
             while cur < fin:
+
                 lbl = cur.strftime("%Y-%m-%d")
+
+                # 1. PRIORIDAD: IEOD
                 if lbl in series_ieod_solar:
+
                     series_solar_7[lbl] = series_ieod_solar[lbl][:48]
-                else:
-                    try:
-                        fb   = _lee_ieod_bytes(cur.year, cur.month, MES_TXT[cur.month-1], cur.day)
-                        vals = _extrae_solar_48_s(fb)
-                        if vals: series_solar_7[lbl] = vals[:48]
-                    except Exception:
-                        pass
-                cur += timedelta(days=1) 
-            
+
+                # 2. SI NO HAY IEOD → RDO A-G
+                elif lbl in series_sol_dia:
+
+                    series_solar_7[lbl] = series_sol_dia[lbl][:48]
+
+                cur += timedelta(days=1)
+
+
+            # =========================================================
+            # ÚLTIMO DÍA: IEOD → RDO A-G
+            # =========================================================
+
             lbl_fin = fin.strftime("%Y-%m-%d")
-            if lbl_fin in series_sol_dia: series_solar_7[lbl_fin] = series_sol_dia[lbl_fin][:48]
+
+            # 1. PRIORIDAD: IEOD
+            if lbl_fin in series_ieod_solar:
+
+                series_solar_7[lbl_fin] = series_ieod_solar[lbl_fin][:48]
+
+            # 2. SI NO HAY IEOD → RDO A-G
+            elif lbl_fin in series_sol_dia:
+
+                series_solar_7[lbl_fin] = series_sol_dia[lbl_fin][:48]
             
             st.session_state["series_sol"] = series_solar_7
             
@@ -3704,7 +4561,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     pass
                 cur += timedelta(days=1)
                 
-            # ---------- HISTÓRICO RPO (A → B → C → D → E → F) ----------
+            # ---------- HISTÓRICO RPO ----------
             series_term_dia = {}
             stem_term = "Termica - Despacho (MW)"
             
@@ -3754,7 +4611,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     except Exception:
                         continue
                     
-                # ===== Fusión A → B → C → D → E → F =====
+                # ===== Fusión =====
                 if rdos:
                 
                     letras_orden = sorted(rdos.keys())
@@ -3770,31 +4627,46 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     if any(v != 0 for v in serie_final):
                         series_term_dia[f.strftime("%Y-%m-%d")] = serie_final
                     
-            # ---------- FUSIÓN IEOD + RPO A ----------
+            # =========================================================
+            # FUSIÓN: IEOD → RDO A-G
+            # =========================================================
+
             series_term_7 = {}
-        
+
             cur = ini
+
             while cur < fin:
+
                 lbl = cur.strftime("%Y-%m-%d")
+
+                # 1. PRIORIDAD: IEOD
                 if lbl in series_ieod_term:
+
                     series_term_7[lbl] = series_ieod_term[lbl][:48]
-                else:
-                    try:
-                        fb = _lee_ieod_bytes(cur.year, cur.month, MES_TXT[cur.month-1], cur.day)
-                        vals = _extrae_termica_48(fb)
-                        if vals and any(v != 0 for v in vals):
-                            series_term_7[lbl] = vals[:48]
-                    except Exception:
-                        pass
-                cur += timedelta(days=1) 
-            
+
+                # 2. SI NO HAY IEOD → RDO A-G FUSIONADO
+                elif lbl in series_term_dia:
+
+                    series_term_7[lbl] = series_term_dia[lbl][:48]
+
+                cur += timedelta(days=1)
+
+
+            # =========================================================
+            # ÚLTIMO DÍA: IEOD → RDO A-G
+            # =========================================================
+
             lbl_fin = fin.strftime("%Y-%m-%d")
-            if lbl_fin in series_term_dia:
+
+            # 1. PRIORIDAD: IEOD
+            if lbl_fin in series_ieod_term:
+
+                series_term_7[lbl_fin] = series_ieod_term[lbl_fin][:48]
+
+            # 2. SI NO HAY IEOD → RDO A-G FUSIONADO
+            elif lbl_fin in series_term_dia:
+
                 series_term_7[lbl_fin] = series_term_dia[lbl_fin][:48]
-            elif series_term_dia:
-                # usar el último RDO disponible
-                ultimo = sorted(series_term_dia.keys())[-1]
-                series_term_7[lbl_fin] = series_term_dia[ultimo][:48]
             
             st.session_state["series_t"] = series_term_7
             
@@ -3821,18 +4693,6 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     ]
                     y_all.extend(vals)
                     ax.plot(xs, vals, marker="o", linewidth=2, linestyle=estilo, label=l)
-        
-                #ax.set_xticks(ticks_pos)
-                #ax.set_xticklabels(ticks_lbl, rotation=90, ha="center", fontsize=8)
-                #if y_all:
-                #    ax.set_ylim(max(0, math.floor(min(y_all)) - 10), math.ceil(max(y_all)) + 10)
-                #ax.yaxis.set_major_locator(mticker.MaxNLocator(integer=True))
-                #ax.grid(axis="y", linestyle="--", alpha=0.5)
-                #ax.set_title("HISTÓRICO TÉRMICA")
-                #ax.set_ylabel("MW")
-                #ax.legend(title="Fecha")
-                #plt.tight_layout()
-                #termica_figs.append(fig)
                 
             # ---------- PROMEDIO DIARIO ----------
             fechas_lbl=[]; promedios=[]
@@ -4076,11 +4936,56 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     dtype=float
                 )
             
-            # RDOs
-            pdo_hidro = _to48(series_h.get(lbl_fin))
-            pdo_term  = _to48(series_t.get(lbl_fin))
-            pdo_eol   = _to48(series_rer.get(lbl_fin))
-            pdo_solar = _to48(series_sol.get(lbl_fin))
+            # =========================================================
+            # CURVA SEIN: PDO + RDO A-G
+            # =========================================================
+
+            def fusionar_pdo_rdos(pdo, series_rdo):
+
+                # PDO como base
+                serie_final = _to48(pdo).copy()
+
+                # Aplicar RDO A → B → C → D → E → F → G
+                for letra in ["RDO A", "RDO B", "RDO C",
+                            "RDO D", "RDO E", "RDO F", "RDO G"]:
+
+                    if letra not in series_rdo:
+                        continue
+
+                    nueva = _to48(series_rdo[letra])
+
+                    # Reemplazar únicamente donde el RDO tenga
+                    # un valor diferente de cero
+                    for i in range(48):
+                        if nueva[i] != 0:
+                            serie_final[i] = nueva[i]
+
+                return serie_final
+
+
+            # =========================================================
+            # PDO + RDO A-G DE CADA FUENTE
+            # =========================================================
+
+            pdo_hidro = fusionar_pdo_rdos(
+                st.session_state.get("pdo_hidro_curva", []),
+                series_h
+            )
+
+            pdo_term = fusionar_pdo_rdos(
+                st.session_state.get("pdo_term_curva", []),
+                series_t
+            )
+
+            pdo_eol = fusionar_pdo_rdos(
+                st.session_state.get("pdo_eol_curva", []),
+                series_rer
+            )
+
+            pdo_solar = fusionar_pdo_rdos(
+                st.session_state.get("pdo_sol_curva", []),
+                series_sol
+            )
                        
             # Acumulados
             y_h = pdo_hidro
