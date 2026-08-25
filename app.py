@@ -4901,7 +4901,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 "STA ROSA UTI 6  GAS","STA ROSA UTI 5  GAS"]),
             ("MALACAS", ["MAL2TGN4GAS","MAL1TG6GAS","MALACAS3 TG 5  GAS",
                 "MALACAS1 TG 6  GAS"]),
-            ("AGUA ESMERALDA", ["AGETG1GAS","AGETG2GAS"]),
+            ("AGUAYTIA", ["AGETG1GAS","AGETG2GAS"]),
         ]
         
         # Ejecutar gráficos térmicos
