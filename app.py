@@ -18,14 +18,11 @@ import locale, urllib3
 import matplotlib.dates as mdates
 import warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-warnings.filterwarnings(
-    "ignore",
-    message="Attempting to set identical low and high ylims makes transformation singular"
-)
+warnings.filterwarnings("ignore", message="Attempting to set identical low and high ylims makes transformation singular")
 
 # ------------------ Configuración ------------------
 BARRAS_DEF = ["SANTA ROSA 220 A", "MOQUEGUA 220", "ZORRITOS 220"]
-RDO_LETRAS_DEF = list("ABCDEF")
+RDO_LETRAS_DEF = list("ABCDEFG")
 MES_TXT_TITLE = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
 MES_TXT = ["ENERO","FEBRERO","MARZO","ABRIL","MAYO","JUNIO","JULIO","AGOSTO","SETIEMBRE","OCTUBRE","NOVIEMBRE","DICIEMBRE"]
 
@@ -161,7 +158,7 @@ def _extraer_hora(df: pd.DataFrame) -> str:
     except Exception:
         return ""
 
-def recolectar_motivos_dia(y, m, d, M, destino, letras="ABCDEF"):
+def recolectar_motivos_dia(y, m, d, M, destino, letras="ABCDEFG"):
     datos = []
     for L in letras:
         url = base_motivo.format(y=y, m=m, M=M, d=d, dd=d, mm=m, L=L)
@@ -591,8 +588,8 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
     
     # ==== Pestañas ====
     tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9,tab10  = st.tabs(["Demanda", "Motivos, Costo Total e Índices", "Recurso y Error", "CMG" , 
-                                                                           "Histórico del IEOD","Histórico de Potencia y Energía", 
-                                                                           "Térmicas", "Curva de SEIN", "Potencia Activa", "Otros"])
+                                                                           "Histórico del IEOD","Histórico de Potencia y Energía", "Térmicas Gas", 
+                                                                           "Térmicas Diesel", "Curva de SEIN", "Potencia Activa"])
     
     with tab1:
         # =========================================================
@@ -1661,7 +1658,23 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         st.session_state.series_rer = series_rer
     if series_sol:
         st.session_state.series_sol = series_sol          
-        
+
+    st.session_state["series_h_curva"] = {
+        k: v.copy() for k, v in series_h.items()
+    }
+
+    st.session_state["series_t_curva"] = {
+        k: v.copy() for k, v in series_t.items()
+    }
+
+    st.session_state["series_eol_curva"] = {
+        k: v.copy() for k, v in series_rer.items()
+    }
+
+    st.session_state["series_sol_curva"] = {
+        k: v.copy() for k, v in series_sol.items()
+    }
+ 
     with tab4:
     # =========================================================
     # ======================== CMG ============================
@@ -4771,9 +4784,9 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
     
     with tab7:
         # =========================================================
-        # ======================= TERMICAS ======================== 
+        # ==================== TERMICAS GAS =======================  
         # =========================================================
-        st.markdown("### TÉRMICAS")
+        st.markdown("### TÉRMICAS GAS")
         
         def generar_grafico_termico_plotly(titulo, grupos,
                                    pdo_res, rdo_letras, work_dir,
@@ -4859,71 +4872,174 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         
             st.plotly_chart(fig)
             
-        # ===============================
-        #   LISTA DE GRÁFICOS TÉRMICOS
-        # ===============================
-        graficos_termicos = [
-            ("CHILCA 1 (Engie Energía Perú)", [
-                "CHILCA1TG1GAS","CHILCA1TG2GAS","CHILCA1TG3GAS",
-                "CHILCA1CC1GAS","CHILCA1CC2GAS","CHILCA1CC3GAS",
-                "CHILCA1CC12GAS","CHILCA1CC23GAS",
-                "CHILCA1CC13GAS","CHILCA1CC123GAS",
-                "CHILCA1CC13GAS", "CHILCA1CC123GAS"
-            ]),
-            ("CHILCA 2 (Engie Energía Perú)", [ 
-                "CHILCA2 CCOMB TG41 GAS","CHILCA2 CCOMB TG41  GAS",
-                "CHILCA2 TG41  GAS"
-            ]),
-            ("KALLPA (Kallpa Generación)", [ 
-                "KALLPATG1GAS","KALLPATG2GAS","KALLPATG3GAS",
-                "KALLPACC1GAS","KALLPACC2GAS","KALLPACC3GAS",
-                "KALLPACC12GAS","KALLPACC23GAS","KALLPACC13GAS","KALLPACC123GAS"
-            ]),
-            ("FENIX (Fenix Power Perú)", [
-                "FENIXGT12GAS","FENIXCCGT12GAS",
-                "FENIXGT11GAS","FENIXCCGT11GAS",
-                "FENIXCCGT11GT12GAS"
-            ]),
-            ("VENTANILLA (Orygen Perú)", [
-                "VENT3GAS","VENT4GAS",
-                "VENTCC3GAS","VENTCC4GAS","VENTCC34GAS",
-                "VENTCC3GASFD","VENTCC4GASFD","VENTCC34GASFD"
-            ]),
-            ("OLLEROS (Termochilca)", [
-                "OLLEROSTG1GAS","OLLEROS CCOMB TG1  GAS",
-                "OLLEROS CCOMB TG1 GAS"
-            ]),
-            ("LAS FLORES (Kallpa Generación)", [
-                "LFLORESTG1GAS","LFLORES CCOMB TG1  GAS"
-            ]),
+        # ==========================
+        #   LISTA DE TÉRMICOS GAS
+        # ==========================
+        graficos_termicos_gas = [
+            ("KALLPA (Kallpa Generación)", ["KALLPATG1GAS","KALLPATG2GAS",
+                "KALLPATG3GAS","KALLPACC1GAS","KALLPACC2GAS","KALLPACC3GAS",
+                "KALLPACC12GAS","KALLPACC23GAS","KALLPACC13GAS",
+                "KALLPACC123GAS"]),
+            ("CHILCA 1 (Engie Energía Perú)", ["CHILCA1TG1GAS",
+                "CHILCA1TG2GAS","CHILCA1TG3GAS","CHILCA1CC1GAS",
+                "CHILCA1CC2GAS","CHILCA1CC3GAS","CHILCA1CC12GAS",
+                "CHILCA1CC23GAS","CHILCA1CC13GAS","CHILCA1CC123GAS"]),
+            ("CHILCA 2 (Engie Energía Perú)", ["CHILCA2 CCOMB TG41 GAS",
+                "CHILCA2 CCOMB TG41  GAS","CHILCA2 TG41  GAS"]),
+            ("FENIX (Fenix Power Perú)", ["FENIXGT12GAS","FENIXCCGT12GAS",
+                "FENIXGT11GAS","FENIXCCGT11GAS","FENIXCCGT11GT12GAS"]),
+            ("VENTANILLA (Orygen Perú)", ["VENT3GAS","VENT4GAS","VENTCC3GAS",
+                "VENTCC4GAS","VENTCC34GAS","VENTCC3GASFD","VENTCC4GASFD",
+                "VENTCC34GASFD"]),
+            ("OLLEROS (Termochilca)", ["OLLEROSTG1GAS",
+                "OLLEROS CCOMB TG1  GAS","OLLEROS CCOMB TG1 GAS"]),
+            ("LAS FLORES (Kallpa Generación)", ["LFLORESTG1GAS",
+                "LFLORES CCOMB TG1  GAS"]),
             ("INDEPENDENCIA (Egesur)", ["INDEPGAS"]),
-            # ("UTI 5", ["STA ROSA UTI 5  D2","STA ROSA UTI 5  GAS"]),
-            # ("UTI 6", ["STA ROSA UTI 6  GAS","STA ROSA UTI 6  D2"]),
-            ("STA ROSA (Orygen Perú)", [
-                "STA ROSA WEST TG7  GAS CON H2O",
-                "STA ROSA WEST TG7  GAS",
-                "STAROSA TG8 GAS",
-                "STA ROSA UTI 6  GAS","STA ROSA UTI 5  GAS"
-            ]),
-            ("MALACAS", ["MAL1TG6GAS","MALACAS3 TG 5  GAS"])
+            ("STA ROSA (Orygen Perú)", ["STA ROSA WEST TG7  GAS CON H2O",
+                "STA ROSA WEST TG7  GAS","STAROSA TG8 GAS",
+                "STA ROSA UTI 6  GAS","STA ROSA UTI 5  GAS"]),
+            ("MALACAS", ["MAL2TGN4GAS","MAL1TG6GAS","MALACAS3 TG 5  GAS",
+                "MALACAS1 TG 6  GAS"]),
+            ("AGUA ESMERALDA", ["AGETG1GAS","AGETG2GAS"]),
         ]
         
         # Ejecutar gráficos térmicos
-        for titulo, grupos in graficos_termicos:
+        for titulo, grupos in graficos_termicos_gas:
             generar_grafico_termico_plotly(
             titulo, grupos,
             pdo_res, rdo_letras, work_dir,
             fecha_str, ddmm
         )
-     
-    series_h   = st.session_state.get("series_h", {})
-    series_t   = st.session_state.get("series_t", {})
-    series_rer = st.session_state.get("series_rer", {})
-    series_sol = st.session_state.get("series_sol", {})
-    
+
     with tab8:
-        st.markdown("### Curva del SEIN")
+        # =========================================================
+        # =================== TERMICAS DIESEL ===================== 
+        # =========================================================
+        st.markdown("### TÉRMICAS DIESEL")
         
+        def generar_grafico_termico_plotly(titulo, grupos,
+                                   pdo_res, rdo_letras, work_dir,
+                                   fecha_str, ddmm,
+                                   stem_term="Termica - Despacho (MW)"):
+            
+            series = {}
+        
+            # --- PDO ---
+            df_pdo = cargar_dataframe(pdo_res, stem_term)
+            vals = rellenar_hasta_48(totales_rer(df_pdo, grupos))
+            if vals:
+                series["PDO"] = vals
+        
+            # --- RDO A-E ---
+            for letra in rdo_letras:
+                rdo_path = (
+                    work_dir /
+                    f"RDO_{letra}_{fecha_str}" /
+                    f"YUPANA_{ddmm}{letra}" /
+                    "RESULTADOS"
+                )
+                df_rdo = cargar_dataframe(rdo_path, stem_term)
+                vals = rellenar_hasta_48(totales_rer(df_rdo, grupos))
+                if vals:
+                    series[f"RDO {letra}"] = vals
+        
+            if not series:
+                st.warning(f"No hay datos para {titulo}")
+                return
+        
+            # --------- Gráfico Plotly ---------
+            fig = go.Figure()
+            xs = list(range(48))
+            y_all = []
+        
+            for name, values in series.items():
+                y = []
+        
+                # --- convertir 0 → None (para cortar la línea) ---
+                for v in values:
+                    if v is None or (isinstance(v, float) and math.isnan(v)):
+                        y.append(None)
+                    elif v == 0:
+                        y.append(None)     # NO dibujar ceros
+                    else:
+                        y.append(v)
+        
+                # si toda la curva es None, no la graficamos
+                if all(v is None for v in y):
+                    continue
+        
+                y_all.extend([v for v in y if v is not None])
+        
+                fig.add_trace(go.Scatter(
+                    x=xs,
+                    y=y,
+                    mode='lines+markers',
+                    name=name,
+                    line=dict(width=2)
+                ))
+        
+            if not y_all:
+                st.warning(f"{titulo}: todos los valores fueron cero")
+                return
+            
+            y_min = max(0, math.floor(min(y_all)) - 10)
+            y_max = math.ceil(max(y_all)) + 10
+            fig.update_yaxes(range=[y_min, y_max])
+        
+            fig.update_layout(
+                title_text=titulo,
+                # xaxis_title="Hora",
+                yaxis_title="MW",
+                xaxis=dict(
+                    tickmode='array',
+                    tickvals=ticks_pos,
+                    ticktext=ticks_lbl,
+                    tickangle=0
+                ),
+                hovermode="x unified",
+            )
+        
+            st.plotly_chart(fig)
+            
+        # =============================
+        #   LISTA DE TÉRMICOS DIESEL
+        # =============================
+        graficos_termicos_diesel = [
+            ("MALACAS", ["MAL3TG5D2","MALACAS1 TG6  D2"]),
+            ("VENTANILLA", ["VENT3D2","VENT4D2"]),
+            ("RESERVA FRÍA ILO", ["RFILO2TG1D2","RFILO2TG2D2","RFILO2TG3D2"]),
+            ("RECKA", ["RECKA TG1  D2"]),
+            ("PUERTOBRAVO", ["PTOBRVO TG3  D2","PTOBRVO TG1  D2",
+                "PTOBRVO TG4  D2","PTOBRVO TG2  D2"]),
+            ("FENIX", ["FENIXCCGT11GT12D2","FENIX GT12  D2","FENIX GT11  D2",
+                "FENIX CCOMB GT12  D2","FENIX CCOMB GT11  D2"]),
+            ("ILO 4", ["CTNEPITG43D2","CTNEPITG42D2","CTNEPITG41D2"]),
+            ("ETEN", ["RF ETEN TG1  D2","RF ETEN TG2  D2"]),
+            ("RESERVA FRÍA PTO. MALDONADO", ["RF PTO MALDONADO  D2"]),
+            ("RESERVA FRÍA PUCALLPA", ["RF PUCALLPA  D2"]),
+            ("CHILINA", ["CHILINA TG  D2"]),
+            ("SANTA ROSA", ["STA ROSA UTI 5  D2",
+                "STA ROSA WEST TG7  D2 CON H2O","STA ROSA UTI 6  D2"]),
+            ("TUMBES", ["TUMBES MAK 1  D2","TUMBES MAK 2  D2"])
+        ]
+        
+        # Ejecutar gráficos térmicos
+        for titulo, grupos in graficos_termicos_diesel:
+            generar_grafico_termico_plotly(
+            titulo, grupos,
+            pdo_res, rdo_letras, work_dir,
+            fecha_str, ddmm
+        )
+
+    series_h_curva = st.session_state.get("series_h_curva", {})
+    series_t_curva = st.session_state.get("series_t_curva", {})
+    series_eol_curva = st.session_state.get("series_eol_curva", {})
+    series_sol_curva = st.session_state.get("series_sol_curva", {})
+
+    with tab9:
+        st.markdown("### Curva del SEIN")
+
         try:
             def _to48(arr):
                 if arr is None:
@@ -4936,16 +5052,15 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                     dtype=float
                 )
             
-            # =========================================================
-            # CURVA SEIN: PDO + RDO A-G
-            # =========================================================
-
+            # =========== CURVA SEIN: PDO + RDO A-G ===========
             def fusionar_pdo_rdos(pdo, series_rdo):
 
                 # PDO como base
                 serie_final = _to48(pdo).copy()
 
-                # Aplicar RDO A → B → C → D → E → F → G
+                rdos_usados = []
+
+                # RDO A → G
                 for letra in ["RDO A", "RDO B", "RDO C",
                             "RDO D", "RDO E", "RDO F", "RDO G"]:
 
@@ -4954,37 +5069,36 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
 
                     nueva = _to48(series_rdo[letra])
 
-                    # Reemplazar únicamente donde el RDO tenga
-                    # un valor diferente de cero
+                    # Verificar si realmente tiene datos
+                    if np.any(nueva != 0):
+                        rdos_usados.append(letra)
+
+                    # Reemplazar donde el RDO tenga valor
                     for i in range(48):
                         if nueva[i] != 0:
                             serie_final[i] = nueva[i]
 
-                return serie_final
+                return serie_final, rdos_usados
 
-
-            # =========================================================
-            # PDO + RDO A-G DE CADA FUENTE
-            # =========================================================
-
-            pdo_hidro = fusionar_pdo_rdos(
+            # ========== PDO + RDO A-G DE CADA FUENTE ==========
+            pdo_hidro, rdos_hidro = fusionar_pdo_rdos(
                 st.session_state.get("pdo_hidro_curva", []),
-                series_h
+                series_h_curva
             )
 
-            pdo_term = fusionar_pdo_rdos(
+            pdo_term, rdos_term = fusionar_pdo_rdos(
                 st.session_state.get("pdo_term_curva", []),
-                series_t
+                series_t_curva
             )
 
-            pdo_eol = fusionar_pdo_rdos(
+            pdo_eol, rdos_eol = fusionar_pdo_rdos(
                 st.session_state.get("pdo_eol_curva", []),
-                series_rer
+                series_eol_curva
             )
 
-            pdo_solar = fusionar_pdo_rdos(
+            pdo_solar, rdos_solar = fusionar_pdo_rdos(
                 st.session_state.get("pdo_sol_curva", []),
-                series_sol
+                series_sol_curva
             )
                        
             # Acumulados
@@ -4993,10 +5107,20 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             y_e = y_t + pdo_eol
             y_s = y_e + pdo_solar
     
-            # === Eje X de 00:30 a 24:00 ===
-            x = np.arange(0.5, 48.5, 1)  # 48 puntos centrados en cada media hora
-            horas = [f"{h:02d}:{m:02d}" for h in range(0, 24) for m in (30, 0)][1:] + ["24:00"]
-    
+            # === Eje X: 00:30 hasta 00:00, cada 30 minutos ===
+            x = np.arange(48)
+
+            horas = []
+            for i in range(48):
+                minutos = (i + 1) * 30
+
+                if minutos == 1440:
+                    horas.append("00:00")
+                else:
+                    h = minutos // 60
+                    m = minutos % 60
+                    horas.append(f"{h:02d}:{m:02d}")
+
             fig, ax = plt.subplots(figsize=(11, 5))
             
             # ==== ÁREAS COLOREADAS (sin bordes) ====
@@ -5006,9 +5130,9 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
             ax.fill_between(x, y_e, y_s, color="#ff7f0e", alpha=0.5, label="SOLAR",   edgecolor="none", linewidth=0)
     
             # === Ajuste del eje X ===
-            ax.set_xlim(0.5, 48.5)  # fuerza inicio 00:30 y fin 24:00
-            ax.set_xticks(np.arange(1, 49, 2))  # etiquetas cada hora (más legible)
-            ax.set_xticklabels(horas[::2], rotation=90, fontsize=7)
+            ax.set_xlim(-0.5, 47.5)
+            ax.set_xticks(np.arange(48))
+            ax.set_xticklabels(horas, rotation=90, fontsize=7)
     
             # Escala correcta en Y
             y_all = np.concatenate([y_h, y_t, y_e, y_s])
@@ -5021,7 +5145,12 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                 ypad=0.08,
                 xpad=0.5
             )
-    
+
+            # === Restaurar eje X después del formato general ===
+            ax.set_xlim(-0.5, 47.5)
+            ax.set_xticks(np.arange(48))
+            ax.set_xticklabels(horas, rotation=90, fontsize=7)
+
             # === Estilo general ===
             ax.set_ylim(bottom=0)
             ax.yaxis.set_major_locator(mticker.MultipleLocator(1000))
@@ -5037,7 +5166,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
         except Exception as e:
             st.error(f"❌ Error en tab8: {e}")
         
-    with tab9:
+    with tab10:
         st.markdown(f"### Máximos y mínimos de Medidores de {MES} del {AÑO}")
         
         if not gen_generar:
@@ -5160,132 +5289,7 @@ def render_graficos_en_pantalla(ini: date, fin: date, barras: list[str], rdo_let
                             
                             st.pyplot(fig)
                             plt.close(fig) 
-    
-    with tab10:
-        # =========================================================
-        # ======================= TÉRMICAS ======================== 
-        # =========================================================
-        st.markdown("### TÉRMICAS")
-        try:
-            fecha_actual = fecha_reporte if 'fecha_reporte' in locals() else fin
-        except NameError:
-            fecha_actual = datetime.today()
-    
-        y, m, d = fecha_actual.year, fecha_actual.month, fecha_actual.day
-        M = MES_TXT[m - 1]
-    
-        # --- Funciones auxiliares ---
-        def descargar_zip_a_bytes(url):
-            try:
-                r = requests.get(url, timeout=40)
-                if r.status_code != 200 or not r.content.startswith(b"PK"):
-                    return None
-                return r.content
-            except Exception:
-                return None
-    
-        def leer_termica_csv_desde_zipbytes(zip_bytes):
-            try:
-                with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
-                    name = next((n for n in zf.namelist()
-                                 if "Termica - Despacho" in n and n.lower().endswith(".csv")), None)
-                    if not name:
-                        return None, None
-                    with zf.open(name) as f:
-                        return pd.read_csv(f, encoding="latin1"), name
-            except Exception:
-                return None, None
-    
-        def suma_unidades_por_fila(df, unidades):
-            if df is None or df.empty:
-                return None, []
-            cols = [c for c in df.columns if any(u in str(c).upper() for u in unidades)]
-            if not cols:
-                return None, []
-            df_num = df[cols].apply(pd.to_numeric, errors="coerce")
-            return df_num.sum(axis=1, numeric_only=True).fillna(0).tolist(), cols
-    
-        # --- Procesar una central y graficar ---
-        def procesar_central(nombre, unidades, y, m, d, M, rdo_letras):
-            st.markdown(f"#### {nombre}")
-            resultados = []
-    
-            for letra in rdo_letras:
-                url = base_rdo.format(y=y, m=f"{m:02d}", M=M, d=f"{d:02d}", letra=letra)
-                zip_bytes = descargar_zip_a_bytes(url)
-                if not zip_bytes:
-                    continue
-                df_term, _ = leer_termica_csv_desde_zipbytes(zip_bytes)
-                vals, cols = suma_unidades_por_fila(df_term, [u.upper() for u in unidades])
-                if vals is None:
-                    continue
-                resultados.append((letra, vals))
-    
-            if not resultados:
-                st.warning(f"No se encontraron datos válidos para {nombre}")
-                return
-    
-            # Fusionar en cascada
-            fusion = [0.0] * 48
-            for letra, vals in resultados:
-                n = len(vals)
-                if n > 48:
-                    vals = vals[:48]
-                    n = 48
-                start = 48 - n
-                for i in range(n):
-                    fusion[start + i] = vals[i]
-    
-            # Crear eje X según fecha del reporte
-            hora_base = datetime(y, m, d, 0, 30)
-            tiempos = [hora_base + timedelta(minutes=30 * i) for i in range(48)]
-            etiquetas = [t.strftime("%H:%M") for t in tiempos]
-    
-            # Graficar
-            fig, ax = plt.subplots(figsize=(10, 4))
-            ax.plot(tiempos, fusion, marker='o', markersize=3, linewidth=2, color='blue')
-            ax.set_title(f"{nombre} - {d:02d}/{m:02d}/{y}", fontsize=11, fontweight='bold')
-            ax.set_ylabel("MW")
-            ax.set_xlabel("Hora")
-            ax.grid(True, linestyle="--", alpha=0.6)
-            ax.set_xticks(tiempos)
-            ax.set_xticklabels(etiquetas, rotation=90, fontsize=7)
-            plt.tight_layout()
-    
-            st.pyplot(fig)
-            plt.close(fig)
-    
-        # --- Lista de centrales ---
-        graficos_termicos = [
-            ("CT RESERVA FRÍA ILO", ["RFILO2TG1D2","RFILO2TG2D2","RFILO2TG3D2"]),
-            ("CT ILO 4", ["CTNEPITG43D2","CTNEPITG42D2","CTNEPITG41D2"]),
-            ("CT PUERTOBRAVO", ["PTOBRVO TG3  D2","PTOBRVO TG1  D2","PTOBRVO TG4  D2","PTOBRVO TG2  D2"]),
-            ("CT MALACAS", ["MALACAS3 TG 5  GAS"]),
-            ("CT RECKA", ["RECKA TG1  D2"]),
-            ("CT ETEN", ["RF ETEN TG1  D2","RF ETEN TG2  D2"]),
-            ("CT FENIX", [
-                "FENIXGT12GAS","FENIXCCGT12GAS","FENIXGT11GAS",
-                "FENIXCCGT11GAS","FENIXCCGT11GT12GAS","FENIXCCGT11GT12D2",
-                "FENIX GT12  D2","FENIX GT11  D2",
-                "FENIX CCOMB GT12  D2","FENIX CCOMB GT11  D2"
-            ]),
-            ("CT VENTANILLA", [
-                "VENT3D2","VENT4D2","VENT3GAS","VENT4GAS",
-                "VENTCC3GAS","VENTCC4GAS","VENTCC34GAS",
-                "VENTCC3GASFD","VENTCC4GASFD","VENTCC34GASFD"
-            ]),
-            ("CT SANTA ROSA", [
-                "STA ROSA UTI 5  D2","STA ROSA WEST TG7  D2 CON H2O","STA ROSA UTI 6  D2"
-            ])
-        ]
-    
-        # --- Ejecutar cuando el usuario presione el botón ---
-        if gen_generar:
-            for nombre, unidades in graficos_termicos:
-                procesar_central(nombre, unidades, y, m, d, M, rdo_letras)
-        else:
-            st.info("Presiona **Generar** para ver las gráficas térmicas fusionadas.")
-        
+
 # -----------------------------------------------------------------------------
 # ------------------------------------ PDF ------------------------------------
 # -----------------------------------------------------------------------------        
