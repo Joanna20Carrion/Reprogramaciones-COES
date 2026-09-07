@@ -830,7 +830,7 @@ st.markdown('<div class="seccion-titulo">ESTADO DE LOS DATOS</div>', unsafe_allo
 
 TABLAS = ["DEMANDA", MOTIVOS_SHEET, COSTOS_SHEET, INDICES_SHEET, GENERACION_SHEET]
 
-@st.cache_data(ttl=60, show_spinner="Consultando fechas en Base de Datos …")
+@st.cache_data(ttl=60, show_spinner="Consultando fechas en base de datos …")
 def _cargar_max_fechas():
     resultado = {}
     for t in TABLAS:
@@ -886,7 +886,7 @@ else:
     """, unsafe_allow_html=True)
 
 # ── Botón de actualización ────────────────────────────────────────────────────
-st.divider()
+st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
 if st.button("Actualizar datos", type="primary", width="stretch"):
     log_box = st.container()
     def log_msg(msg):
